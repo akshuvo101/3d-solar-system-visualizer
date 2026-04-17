@@ -1,36 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Solar System with Graphics
 
-## Getting Started
+A polished interactive 3D solar system simulation built with Next.js, React, TypeScript, and Three.js. This project combines real-time orbital animation, custom shader effects, planet data panels, camera tracking, zoom controls, and ambient audio for an immersive astronomy experience.
 
-First, run the development server:
+## 🚀 Key Features
+
+- 3D solar system simulation rendered with `@react-three/fiber` and `three`
+- Custom planet plasma shader effects for vivid visuals
+- Interactive planet selection via sidebar and click-to-view detail cards
+- Smooth camera follow, orbit controls, and zoom buttons
+- Adjustable orbital animation speed with a slider
+- Background audio toggle for immersive ambience
+- Realistic planet metadata including radius, mass, gravity, temperature, and moon count
+
+## 🧭 Project Structure
+
+- `app/page.tsx` – main entry point that renders the simulation page
+- `app/simulation/page.tsx` – client-side simulation screen with controls and UI
+- `components/solar/` – 3D scene components:
+  - `SolarSystem3D.tsx`
+  - `Planet.tsx`
+  - `Sun.tsx`
+  - `StarField.tsx`
+  - `OrbitPath.tsx`
+  - `CameraController.tsx`
+- `components/layout/Sidebar.tsx` – planet selection sidebar
+- `components/common/PlanetInfo.tsx` – detail panel for selected planets
+- `components/common/AudioPlayer.tsx` – audio playback toggle
+- `components/ui/Button.tsx` – zoom control buttons
+- `lib/planetData.ts` – planet configuration, textures, and scientific data
+- `shaders/` – custom shader material definitions for planet and sun effects
+- `public/textures/` – planet textures used in the 3D scene
+
+## 💻 Technology Stack
+
+- Next.js 16
+- React 19
+- TypeScript
+- Three.js
+- `@react-three/fiber`
+- `@react-three/drei`
+- Tailwind CSS (via PostCSS)
+
+## 📦 Installation
+
+Install dependencies and run the app locally:
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open `http://localhost:3000` in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## ▶️ How to Use
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Use the left sidebar to choose a planet
+- Click any planet in the scene to open the info card
+- Drag with the mouse to orbit the camera around the system
+- Scroll to zoom the camera in and out
+- Use the bottom slider to change animation speed
+- Toggle background music with the button in the top-right corner
+- Use the zoom buttons on screen for quick close/far views
 
-## Learn More
+## 🔧 Scripts
 
-To learn more about Next.js, take a look at the following resources:
+- `npm run dev` – start development server
+- `npm run build` – build production bundle
+- `npm run start` – start Next.js production server
+- `npm run lint` – run ESLint
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🌌 Notes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This project is designed as a demonstration of integrating Three.js into a modern Next.js app with interactive UI, custom shaders, and planet detail metadata. The scene uses a combination of orbiting planet groups, shader-driven materials, and responsive camera movement for a polished presentation.
