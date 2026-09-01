@@ -19,9 +19,9 @@ export const useCamera = ({ selectedPlanet, refs }: UseCameraProps) => {
       const pos = ref.current.position;
 
       targetPos.current.set(
-        pos.x + 10,
-        pos.y + 5,
-        pos.z + 10
+        pos.x + 30,
+        pos.y + 15,
+        pos.z + 30
       );
 
       camera.position.lerp(targetPos.current, 0.03);

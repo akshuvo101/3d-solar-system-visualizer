@@ -5,7 +5,6 @@ import { Moon } from "./Moon";
 import * as THREE from "three";
 import { PlanetComponentProps } from "@/types";
 import { createPlanetPlasmaMaterial } from "@/shaders/planetShader";
-// import { createPlanetPlasmaMaterial } from "@/shaders/planetShader";
 
 export const Planet = ({
   planet,
@@ -27,16 +26,6 @@ export const Planet = ({
     return createPlanetPlasmaMaterial(texture, colors);
   }, [texture, colors]);
 
-  //   useFrame(({ clock }, delta) => {
-  //     const t = clock.getElapsedTime() * planet.speed * speed;
-
-  //     if (!groupRef.current) return;
-
-  //     groupRef.current.position.x = planet.distance * Math.cos(t);
-  //     groupRef.current.position.z = planet.distance * Math.sin(t);
-
-  //     groupRef.current.rotation.y += delta * 0.3;
-  //   });
 
   useFrame(({ clock }, delta) => {
     const t = clock.getElapsedTime() * planet.speed * speed;

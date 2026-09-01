@@ -1,6 +1,6 @@
 # Solar System with Graphics
 
-A polished interactive 3D solar system simulation built with Next.js, React, TypeScript, and Three.js. This project combines real-time orbital animation, custom shader effects, planet data panels, camera tracking, zoom controls, and ambient audio for an immersive astronomy experience.
+An interactive 3D solar system simulation built with Next.js, React, TypeScript, and Three.js. This project combines real-time orbital animation, custom shader effects, planet data panels, camera tracking, zoom controls, and ambient audio for an immersive astronomy experience.
 
 ## 🚀 Key Features
 

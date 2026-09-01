@@ -9,6 +9,7 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "@react-three/drei";
 import ZoomControls from "../ui/Button";
+import PlanetInfo from "@/components/common/PlanetInfo";
 
 type Props = {
   speed: number;
@@ -19,7 +20,7 @@ type Props = {
 export default function SolarSystem3D({
   speed,
   selectedPlanet,
-  onPlanetClick,
+  onPlanetClick
 }: Props) {
   const planetRefs = useRef<
     Record<string, React.RefObject<THREE.Group | null>>
@@ -47,7 +48,7 @@ export default function SolarSystem3D({
   };
   return (
     <div style={{ width: "100vw", height: "100vh", position: "relative" }}>
-      <Canvas>
+      <Canvas camera={{ position: [0, 30, 80], fov: 65 }}>
         <OrbitControls
           ref={controlsRef}
           enablePan={false}
@@ -79,7 +80,7 @@ export default function SolarSystem3D({
 
         <CameraController selectedPlanet={selectedPlanet} refs={planetRefs} />
       </Canvas>
-      <ZoomControls  zoomIn={zoomIn} zoomOut={zoomOut} />
+      <ZoomControls zoomIn={zoomIn} zoomOut={zoomOut} />
     </div>
   );
 }
