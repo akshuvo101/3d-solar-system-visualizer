@@ -1,10 +1,20 @@
-
 import * as THREE from "three";
 
 export type PlasmaColors = {
   a: string;
   b: string;
   c: string;
+};
+
+// 🌙 Visual Moon Configuration
+export type MoonSystemType = {
+  name: string;
+  size: number;
+  distance: number;
+  speed: number;
+  inclination?: number;
+  angle?: number;
+  color?: string;
 };
 
 export type PlanetType = {
@@ -16,7 +26,10 @@ export type PlanetType = {
   texture: string;
   moons: number;
 
-  // ✅ NEW FIELDS
+  // 🌙 Major moons rendered visually
+  moonSystem?: MoonSystemType[];
+
+  // Planet information
   type?: string;
   radius?: number;
   mass?: number;
@@ -38,7 +51,6 @@ export type PlanetSelection = {
   realSpeed?: number;
   fact?: string;
 
-  // ✅ ADD THESE
   type?: string;
   radius?: number;
   mass?: number;
@@ -50,11 +62,14 @@ export type PlanetSelection = {
   gravityNote?: string;
 };
 
-
 export type PlanetComponentProps = {
   planet: PlanetType;
   speed: number;
-  setRef: (name: string, ref: React.RefObject<THREE.Group | null>) => void;
+  selectedPlanet: string;
+  setRef: (
+    name: string,
+    ref: React.RefObject<THREE.Group | null>
+  ) => void;
   onClick: (planet: PlanetSelection) => void;
 };
 

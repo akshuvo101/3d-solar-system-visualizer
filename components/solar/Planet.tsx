@@ -26,25 +26,29 @@ export const Planet = ({
     return createPlanetPlasmaMaterial(texture, colors);
   }, [texture, colors]);
 
-
   useFrame(({ clock }, delta) => {
     const t = clock.getElapsedTime() * planet.speed * speed;
 
     if (!groupRef.current) return;
 
-    // 🌍 Orbit motion
-    groupRef.current.position.x = planet.distance * Math.cos(t);
-    groupRef.current.position.z = planet.distance * Math.sin(t);
+    // 🌍 Planet orbit around the Sun
+    groupRef.current.position.x =
+      planet.distance * Math.cos(t);
+
+    groupRef.current.position.z =
+      planet.distance * Math.sin(t);
 
     // 🌀 Planet rotation
     groupRef.current.rotation.y += delta * 0.3;
 
-    // 🔥 Shader time update (Plasma animation)
+    // 🔥 Shader animation
     const time = clock.getElapsedTime();
+
     if (material.uniforms.uTime) {
       material.uniforms.uTime.value = time;
     }
   });
+
   useEffect(() => {
     setRef(planet.name, groupRef);
   }, [planet.name, setRef]);
@@ -52,6 +56,7 @@ export const Planet = ({
   return (
     <group ref={groupRef}>
 
+      {/* 🌍 Planet */}
       <Sphere
         onClick={() =>
           onClick({
@@ -61,7 +66,6 @@ export const Planet = ({
             realSpeed: planet.realSpeed,
             fact: planet.fact,
 
-            // ✅ NEW DATA
             type: planet.type,
             radius: planet.radius,
             mass: planet.mass,
@@ -83,22 +87,33 @@ export const Planet = ({
         />
       </Sphere>
 
-      {/* Saturn Ring */}
+      {/* 🪐 Saturn's Rings */}
       {planet.name === "Saturn" && (
         <Ring
-          args={[planet.size * 1.5, planet.size * 2, 64]}
+          args={[
+            planet.size * 1.5,
+            planet.size * 2,
+            64,
+          ]}
           rotation={[Math.PI / 2, 0, 0]}
         >
-          <meshBasicMaterial color="white" side={THREE.DoubleSide} />
+          <meshBasicMaterial
+            color="white"
+            side={THREE.DoubleSide}
+          />
         </Ring>
       )}
 
-      {/* Moons */}
+      {/* 🌙 Major / Visual Moons */}
       <group>
-        {Array.from({ length: planet.moons }).map((_, i) => (
-          <Moon key={i} index={i} />
+        {planet.moonSystem?.map((moon) => (
+          <Moon
+            key={moon.name}
+            moon={moon}
+          />
         ))}
       </group>
+
     </group>
   );
 };
