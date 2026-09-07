@@ -45,7 +45,7 @@ export default function Sidebar({
       </button>
 
       {/* Desktop Sidebar */}
-      <div className="hidden md:flex fixed left-0 top-0 h-full w-24 bg-black/60 backdrop-blur z-20 flex-col items-center py-4 gap-4">
+      <div className="hidden md:flex fixed left-0 top-0 h-full w-24 z-20 flex-col items-center py-4 gap-4">
         {planets.map((p) => {
           const isActive = selectedPlanet === p;
 
@@ -67,7 +67,7 @@ export default function Sidebar({
 
       {/* Mobile Sidebar */}
       <div
-        className={`fixed left-0 top-0 h-full w-64 z-[55] bg-black/90 backdrop-blur-xl border-r border-white/10 pt-5 px-6 transition-transform duration-300 md:hidden ${
+        className={`fixed left-0 top-0 h-full w-64 z-[55] bg-transparent backdrop-blur-xl border-r border-white/10 pt-5 px-6 transition-transform duration-300 md:hidden ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >

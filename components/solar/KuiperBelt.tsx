@@ -2,9 +2,9 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
-const KUIPER_COUNT = 1800;
-const FEATURED_COUNT = 24;
-const DUST_COUNT = 2200;
+const KUIPER_COUNT = 850;
+const FEATURED_COUNT = 12;
+const DUST_COUNT = 1000;
 
 type KuiperObject = {
   angle: number;
@@ -20,10 +20,14 @@ type KuiperObject = {
 };
 
 export const KuiperBelt = () => {
-  const meshRef = useRef<THREE.InstancedMesh>(null);
+  const meshRef =
+    useRef<THREE.InstancedMesh>(null);
+
   const featuredMeshRef =
     useRef<THREE.InstancedMesh>(null);
-  const dustRef = useRef<THREE.Points>(null);
+
+  const dustRef =
+    useRef<THREE.Points>(null);
 
   const dummy = useMemo(
     () => new THREE.Object3D(),
@@ -31,77 +35,136 @@ export const KuiperBelt = () => {
   );
 
   /*
-   * 🧊 Main Kuiper Belt
+   * ============================================================
+   * 🧊 MAIN KUIPER BELT OBJECTS
+   * ============================================================
    */
-  const kuiperObjects = useMemo<KuiperObject[]>(() => {
-    const icyColors = [
-      "#8fa8b8",
-      "#a9bdc8",
-      "#c4d4dc",
-      "#78909c",
-      "#b8cbd4",
-      "#d5e1e5",
-      "#6f8794",
-    ];
 
-    return Array.from(
-      { length: KUIPER_COUNT },
-      () => {
-        const angle =
-          Math.random() * Math.PI * 2;
+  const kuiperObjects =
+    useMemo<KuiperObject[]>(() => {
 
-        // Neptune is around 38 units in this simulation.
-        // Kuiper Belt begins farther out.
-        const radius =
-          43 + Math.random() * 18;
+      const icyColors = [
+        "#596a73",
+        "#687b84",
+        "#788b94",
+        "#8a9da5",
+        "#9aaeb5",
+        "#6d7f87",
+        "#82959d",
+        "#a1b1b7",
+      ];
 
-        // Much thinner than a normal sphere,
-        // but still slightly vertically scattered.
-        const height =
-          (Math.random() - 0.5) *
-          (1.8 + Math.random() * 2.8);
+      return Array.from(
+        {
+          length: KUIPER_COUNT,
+        },
+        () => {
 
-        const largeObject =
-          Math.random() < 0.025;
+          const angle =
+            Math.random() *
+            Math.PI *
+            2;
 
-        const size = largeObject
-          ? 0.075 + Math.random() * 0.11
-          : 0.018 + Math.random() * 0.055;
+          /*
+           * Neptune ends around the outer
+           * planetary region in this simulation.
+           */
 
-        return {
-          angle,
-          radius,
-          height,
-          size,
-          speed:
-            0.018 + Math.random() * 0.045,
-          rotationSpeed:
-            0.15 + Math.random() * 0.65,
-          rotationX:
-            Math.random() * Math.PI,
-          rotationY:
-            Math.random() * Math.PI,
-          rotationZ:
-            Math.random() * Math.PI,
-          color: new THREE.Color(
-            icyColors[
-              Math.floor(
+          const radius =
+            43 +
+            Math.random() *
+              19;
+
+          /*
+           * Slightly flattened distribution.
+           */
+
+          const height =
+            (
+              Math.random() -
+              0.5
+            ) *
+            (
+              1.5 +
+              Math.random() *
+                3.0
+            );
+
+          /*
+           * Very small number of larger bodies.
+           */
+
+          const largeObject =
+            Math.random() <
+            0.028;
+
+          const size =
+            largeObject
+              ? 0.075 +
                 Math.random() *
-                  icyColors.length
-              )
-            ]
-          ),
-        };
-      }
-    );
-  }, []);
+                  0.12
+              : 0.016 +
+                Math.random() *
+                  0.052;
+
+          return {
+            angle,
+
+            radius,
+
+            height,
+
+            size,
+
+            speed:
+              0.016 +
+              Math.random() *
+                0.042,
+
+            rotationSpeed:
+              0.14 +
+              Math.random() *
+                0.65,
+
+            rotationX:
+              Math.random() *
+              Math.PI,
+
+            rotationY:
+              Math.random() *
+              Math.PI,
+
+            rotationZ:
+              Math.random() *
+              Math.PI,
+
+            color:
+              new THREE.Color(
+                icyColors[
+                  Math.floor(
+                    Math.random() *
+                      icyColors.length
+                  )
+                ]
+              ),
+          };
+        }
+      );
+    }, []);
 
   /*
-   * 🧊 Irregular icy geometry
+   * ============================================================
+   * 🧊 IRREGULAR ICE GEOMETRY
+   * ============================================================
    */
+
   const geometry = useMemo(() => {
+
     const geo =
-      new THREE.IcosahedronGeometry(1, 1);
+      new THREE.IcosahedronGeometry(
+        1,
+        1
+      );
 
     const position =
       geo.attributes.position;
@@ -111,117 +174,176 @@ export const KuiperBelt = () => {
       i < position.count;
       i++
     ) {
-      const x = position.getX(i);
-      const y = position.getY(i);
-      const z = position.getZ(i);
+
+      const x =
+        position.getX(i);
+
+      const y =
+        position.getY(i);
+
+      const z =
+        position.getZ(i);
 
       const variation =
-        0.78 + Math.random() * 0.44;
+        0.76 +
+        Math.random() *
+          0.48;
 
       position.setXYZ(
         i,
-        x * variation,
+
+        x *
+          variation,
+
         y *
-          (0.72 +
-            Math.random() * 0.4),
+          (
+            0.70 +
+            Math.random() *
+              0.42
+          ),
+
         z *
-          (0.8 +
-            Math.random() * 0.4)
+          (
+            0.78 +
+            Math.random() *
+              0.42
+          )
       );
     }
 
     position.needsUpdate = true;
+
     geo.computeVertexNormals();
 
     return geo;
   }, []);
 
   /*
-   * ❄️ Main icy material
+   * ============================================================
+   * 🪨 MAIN KUIPER MATERIAL
+   * ============================================================
    */
+
   const material = useMemo(() => {
+
     return new THREE.MeshStandardMaterial({
       color: "#ffffff",
-      roughness: 0.9,
+
+      roughness: 0.96,
+
       metalness: 0,
+
       flatShading: true,
+
+      emissive: "#000000",
+
+      emissiveIntensity: 0,
+
+      envMapIntensity: 0.18,
     });
   }, []);
 
   /*
-   * ✨ Featured distant objects
+   * ============================================================
+   * ✨ FEATURED DISTANT OBJECTS
+   * ============================================================
    */
+
   const featuredObjects =
     useMemo<KuiperObject[]>(() => {
+
       const colors = [
-        "#c9dce5",
-        "#dce8ed",
-        "#9eb6c2",
-        "#b7ccd5",
-        "#e1e9ec",
+        "#879ba4",
+        "#9aadb4",
+        "#a9b9bf",
+        "#72868f",
+        "#b5c2c7",
+        "#81959e",
       ];
 
       return Array.from(
-        { length: FEATURED_COUNT },
+        {
+          length:
+            FEATURED_COUNT,
+        },
         (_, index) => {
+
           return {
             angle:
-              (index /
-                FEATURED_COUNT) *
+              (
+                index /
+                FEATURED_COUNT
+              ) *
                 Math.PI *
                 2 +
-              (Math.random() -
-                0.5) *
+              (
+                Math.random() -
+                0.5
+              ) *
                 0.45,
 
             radius:
               44 +
-              Math.random() * 16,
+              Math.random() *
+                17,
 
             height:
-              (Math.random() -
-                0.5) *
-              3.8,
+              (
+                Math.random() -
+                0.5
+              ) *
+              3.6,
 
             size:
-              0.16 +
-              Math.random() * 0.25,
+              0.15 +
+              Math.random() *
+                0.25,
 
             speed:
-              0.012 +
-              Math.random() * 0.025,
+              0.011 +
+              Math.random() *
+                0.024,
 
             rotationSpeed:
-              0.12 +
-              Math.random() * 0.5,
+              0.10 +
+              Math.random() *
+                0.50,
 
             rotationX:
-              Math.random() * Math.PI,
+              Math.random() *
+              Math.PI,
 
             rotationY:
-              Math.random() * Math.PI,
+              Math.random() *
+              Math.PI,
 
             rotationZ:
-              Math.random() * Math.PI,
+              Math.random() *
+              Math.PI,
 
-            color: new THREE.Color(
-              colors[
-                Math.floor(
-                  Math.random() *
-                    colors.length
-                )
-              ]
-            ),
+            color:
+              new THREE.Color(
+                colors[
+                  Math.floor(
+                    Math.random() *
+                      colors.length
+                  )
+                ]
+              ),
           };
         }
       );
     }, []);
 
   /*
-   * 💎 Higher detail featured geometry
+   * ============================================================
+   * 💎 FEATURED HIGH DETAIL GEOMETRY
+   * ============================================================
    */
+
   const featuredGeometry =
     useMemo(() => {
+
       const geo =
         new THREE.IcosahedronGeometry(
           1,
@@ -236,86 +358,137 @@ export const KuiperBelt = () => {
         i < position.count;
         i++
       ) {
-        const x = position.getX(i);
-        const y = position.getY(i);
-        const z = position.getZ(i);
+
+        const x =
+          position.getX(i);
+
+        const y =
+          position.getY(i);
+
+        const z =
+          position.getZ(i);
 
         const variation =
-          0.76 +
-          Math.random() * 0.5;
+          0.74 +
+          Math.random() *
+            0.52;
 
         position.setXYZ(
           i,
-          x * variation,
+
+          x *
+            variation,
+
           y *
-            (0.7 +
-              Math.random() * 0.45),
+            (
+              0.68 +
+              Math.random() *
+                0.46
+            ),
+
           z *
-            (0.78 +
-              Math.random() * 0.42)
+            (
+              0.76 +
+              Math.random() *
+                0.44
+            )
         );
       }
 
       position.needsUpdate = true;
+
       geo.computeVertexNormals();
 
       return geo;
     }, []);
 
+  /*
+   * ============================================================
+   * ✨ FEATURED MATERIAL
+   * ============================================================
+   */
+
   const featuredMaterial =
     useMemo(() => {
+
       return new THREE.MeshStandardMaterial({
         color: "#ffffff",
-        roughness: 0.84,
+
+        roughness: 0.92,
+
         metalness: 0,
+
         flatShading: true,
+
+        emissive: "#000000",
+
+        emissiveIntensity: 0,
+
+        envMapIntensity: 0.22,
       });
     }, []);
 
   /*
-   * 🌫️ Subtle Kuiper dust
+   * ============================================================
+   * 🌫️ KUIPER DUST
+   * ============================================================
    */
-  const dustPositions = useMemo(() => {
-    const positions =
-      new Float32Array(
-        DUST_COUNT * 3
-      );
 
-    for (
-      let i = 0;
-      i < DUST_COUNT;
-      i++
-    ) {
-      const angle =
-        Math.random() *
-        Math.PI *
-        2;
+  const dustPositions =
+    useMemo(() => {
 
-      const radius =
-        42 +
-        Math.random() * 20;
+      const positions =
+        new Float32Array(
+          DUST_COUNT * 3
+        );
 
-      const height =
-        (Math.random() - 0.5) *
-        4.5;
+      for (
+        let i = 0;
+        i < DUST_COUNT;
+        i++
+      ) {
 
-      positions[i * 3] =
-        Math.cos(angle) *
-        radius;
+        const angle =
+          Math.random() *
+          Math.PI *
+          2;
 
-      positions[i * 3 + 1] =
-        height;
+        const radius =
+          42 +
+          Math.random() *
+            21;
 
-      positions[i * 3 + 2] =
-        Math.sin(angle) *
-        radius;
-    }
+        const height =
+          (
+            Math.random() -
+            0.5
+          ) *
+          4.2;
 
-    return positions;
-  }, []);
+        positions[
+          i * 3
+        ] =
+          Math.cos(angle) *
+          radius;
+
+        positions[
+          i * 3 + 1
+        ] =
+          height;
+
+        positions[
+          i * 3 + 2
+        ] =
+          Math.sin(angle) *
+          radius;
+      }
+
+      return positions;
+    }, []);
 
   const dustGeometry =
     useMemo(() => {
+
       const geo =
         new THREE.BufferGeometry();
 
@@ -330,28 +503,47 @@ export const KuiperBelt = () => {
       return geo;
     }, [dustPositions]);
 
+  /*
+   * ============================================================
+   * 🌫️ SUBTLE DUST MATERIAL
+   * ============================================================
+   */
+
   const dustMaterial =
     useMemo(() => {
+
       return new THREE.PointsMaterial({
-        color: "#b9d2dc",
-        size: 0.028,
+        color: "#7e949e",
+
+        size: 0.025,
+
         sizeAttenuation: true,
+
         transparent: true,
-        opacity: 0.12,
+
+        opacity: 0.085,
+
         depthWrite: false,
+
         blending:
           THREE.AdditiveBlending,
       });
     }, []);
 
   /*
-   * 🎨 Main object colors
+   * ============================================================
+   * 🎨 INSTANCE COLORS
+   * ============================================================
    */
+
   useMemo(() => {
-    if (!meshRef.current) return;
+
+    if (!meshRef.current)
+      return;
 
     kuiperObjects.forEach(
       (object, index) => {
+
         meshRef.current!.setColorAt(
           index,
           object.color
@@ -362,20 +554,28 @@ export const KuiperBelt = () => {
     if (
       meshRef.current.instanceColor
     ) {
+
       meshRef.current.instanceColor.needsUpdate =
         true;
     }
   }, [kuiperObjects]);
 
   /*
-   * 🎨 Featured object colors
+   * ============================================================
+   * 🎨 FEATURED COLORS
+   * ============================================================
    */
+
   useMemo(() => {
-    if (!featuredMeshRef.current)
+
+    if (
+      !featuredMeshRef.current
+    )
       return;
 
     featuredObjects.forEach(
       (object, index) => {
+
         featuredMeshRef.current!.setColorAt(
           index,
           object.color
@@ -387,200 +587,257 @@ export const KuiperBelt = () => {
       featuredMeshRef.current
         .instanceColor
     ) {
-      featuredMeshRef.current.instanceColor.needsUpdate =
-        true;
+
+      featuredMeshRef.current
+        .instanceColor
+        .needsUpdate = true;
     }
   }, [featuredObjects]);
 
   /*
-   * 🚀 Animation
+   * ============================================================
+   * 🚀 ANIMATION
+   * ============================================================
    */
-  useFrame(({ clock, camera }) => {
-    const time =
-      clock.getElapsedTime();
 
-    /*
-     * Main Kuiper objects
-     */
-    if (meshRef.current) {
-      kuiperObjects.forEach(
-        (object, index) => {
-          const angle =
-            object.angle +
-            time * object.speed;
+  useFrame(
+    ({ clock, camera }) => {
 
-          const x =
-            Math.cos(angle) *
-            object.radius;
+      const time =
+        clock.getElapsedTime();
 
-          const z =
-            Math.sin(angle) *
-            object.radius;
+      /*
+       * ======================================================
+       * 🧊 MAIN KUIPER OBJECTS
+       * ======================================================
+       */
 
-          const y =
-            object.height +
-            Math.sin(
-              time * 0.08 +
+      if (meshRef.current) {
+
+        kuiperObjects.forEach(
+          (
+            object,
+            index
+          ) => {
+
+            const angle =
+              object.angle +
+              time *
+                object.speed;
+
+            const x =
+              Math.cos(angle) *
+              object.radius;
+
+            const z =
+              Math.sin(angle) *
+              object.radius;
+
+            const y =
+              object.height +
+              Math.sin(
+                time * 0.08 +
                 object.angle
-            ) *
-              0.035;
+              ) *
+                0.035;
 
-          dummy.position.set(
-            x,
-            y,
-            z
-          );
+            dummy.position.set(
+              x,
+              y,
+              z
+            );
 
-          dummy.scale.set(
-            object.size,
-            object.size *
-              0.82,
-            object.size *
-              0.92
-          );
+            dummy.scale.set(
+              object.size,
 
-          dummy.rotation.set(
-            object.rotationX +
-              time *
-                object.rotationSpeed *
-                0.08,
+              object.size *
+                0.82,
 
-            object.rotationY +
-              time *
-                object.rotationSpeed *
-                0.12,
+              object.size *
+                0.92
+            );
 
-            object.rotationZ +
-              time *
-                object.rotationSpeed *
-                0.06
-          );
+            dummy.rotation.set(
 
-          dummy.updateMatrix();
+              object.rotationX +
+                time *
+                  object.rotationSpeed *
+                  0.08,
 
-          meshRef.current!.setMatrixAt(
-            index,
-            dummy.matrix
-          );
-        }
-      );
+              object.rotationY +
+                time *
+                  object.rotationSpeed *
+                  0.12,
 
-      meshRef.current.instanceMatrix.needsUpdate =
-        true;
-    }
+              object.rotationZ +
+                time *
+                  object.rotationSpeed *
+                  0.06
+            );
 
-    /*
-     * Featured objects
-     */
-    if (
-      featuredMeshRef.current
-    ) {
-      featuredObjects.forEach(
-        (object, index) => {
-          const angle =
-            object.angle +
-            time * object.speed;
+            dummy.updateMatrix();
 
-          const x =
-            Math.cos(angle) *
-            object.radius;
-
-          const z =
-            Math.sin(angle) *
-            object.radius;
-
-          const y =
-            object.height +
-            Math.sin(
-              time * 0.06 +
-                object.angle
-            ) *
-              0.05;
-
-          dummy.position.set(
-            x,
-            y,
-            z
-          );
-
-          dummy.scale.set(
-            object.size *
-              1.15,
-            object.size *
-              0.9,
-            object.size
-          );
-
-          dummy.rotation.set(
-            object.rotationX +
-              time *
-                object.rotationSpeed *
-                0.06,
-
-            object.rotationY +
-              time *
-                object.rotationSpeed *
-                0.1,
-
-            object.rotationZ +
-              time *
-                object.rotationSpeed *
-                0.05
-          );
-
-          dummy.updateMatrix();
-
-          featuredMeshRef.current!.setMatrixAt(
-            index,
-            dummy.matrix
-          );
-        }
-      );
-
-      featuredMeshRef.current.instanceMatrix.needsUpdate =
-        true;
-    }
-
-    /*
-     * 🌫️ Dust rotation + distance fade
-     */
-    if (dustRef.current) {
-      dustRef.current.rotation.y =
-        time * 0.012;
-
-      dustRef.current.rotation.x =
-        Math.sin(time * 0.04) *
-        0.004;
-
-      const cameraDistance =
-        camera.position.length();
-
-      const fadeStart = 220;
-      const fadeEnd = 650;
-
-      const fade =
-        THREE.MathUtils.clamp(
-          1 -
-            (cameraDistance -
-              fadeStart) /
-              (fadeEnd -
-                fadeStart),
-          0,
-          1
+            meshRef.current!.setMatrixAt(
+              index,
+              dummy.matrix
+            );
+          }
         );
 
-      const dustMaterial =
-        dustRef.current
-          .material as THREE.PointsMaterial;
+        meshRef.current
+          .instanceMatrix
+          .needsUpdate = true;
+      }
 
-      dustMaterial.opacity =
-        0.12 * fade;
+      /*
+       * ======================================================
+       * ✨ FEATURED OBJECTS
+       * ======================================================
+       */
+
+      if (
+        featuredMeshRef.current
+      ) {
+
+        featuredObjects.forEach(
+          (
+            object,
+            index
+          ) => {
+
+            const angle =
+              object.angle +
+              time *
+                object.speed;
+
+            const x =
+              Math.cos(angle) *
+              object.radius;
+
+            const z =
+              Math.sin(angle) *
+              object.radius;
+
+            const y =
+              object.height +
+              Math.sin(
+                time * 0.06 +
+                object.angle
+              ) *
+                0.05;
+
+            dummy.position.set(
+              x,
+              y,
+              z
+            );
+
+            dummy.scale.set(
+              object.size *
+                1.15,
+
+              object.size *
+                0.90,
+
+              object.size
+            );
+
+            dummy.rotation.set(
+
+              object.rotationX +
+                time *
+                  object.rotationSpeed *
+                  0.06,
+
+              object.rotationY +
+                time *
+                  object.rotationSpeed *
+                  0.10,
+
+              object.rotationZ +
+                time *
+                  object.rotationSpeed *
+                  0.05
+            );
+
+            dummy.updateMatrix();
+
+            featuredMeshRef.current!.setMatrixAt(
+              index,
+              dummy.matrix
+            );
+          }
+        );
+
+        featuredMeshRef.current
+          .instanceMatrix
+          .needsUpdate = true;
+      }
+
+      /*
+       * ======================================================
+       * 🌫️ DUST ROTATION + DISTANCE FADE
+       * ======================================================
+       */
+
+      if (dustRef.current) {
+
+        dustRef.current.rotation.y =
+          time * 0.011;
+
+        dustRef.current.rotation.x =
+          Math.sin(
+            time * 0.04
+          ) *
+          0.003;
+
+        const cameraDistance =
+          camera.position.length();
+
+        const fadeStart =
+          210;
+
+        const fadeEnd =
+          650;
+
+        const fade =
+          THREE.MathUtils.clamp(
+            1 -
+              (
+                cameraDistance -
+                fadeStart
+              ) /
+                (
+                  fadeEnd -
+                  fadeStart
+                ),
+            0,
+            1
+          );
+
+        const dustMaterial =
+          dustRef.current
+            .material as THREE.PointsMaterial;
+
+        dustMaterial.opacity =
+          0.085 * fade;
+      }
     }
-  });
+  );
+
+  /*
+   * ============================================================
+   * 🎨 RENDER
+   * ============================================================
+   */
 
   return (
     <>
-      {/* 🌫️ Icy Dust */}
+
+      {/* ======================================================
+          🌫️ ICY DUST
+          ====================================================== */}
+
       <points
         ref={dustRef}
         geometry={dustGeometry}
@@ -592,7 +849,10 @@ export const KuiperBelt = () => {
         />
       </points>
 
-      {/* 🧊 Main Kuiper Objects */}
+      {/* ======================================================
+          🧊 MAIN KUIPER OBJECTS
+          ====================================================== */}
+
       <instancedMesh
         ref={meshRef}
         args={[
@@ -603,7 +863,10 @@ export const KuiperBelt = () => {
         frustumCulled={false}
       />
 
-      {/* ✨ Featured Icy Objects */}
+      {/* ======================================================
+          ✨ FEATURED ICY OBJECTS
+          ====================================================== */}
+
       <instancedMesh
         ref={featuredMeshRef}
         args={[
@@ -613,6 +876,7 @@ export const KuiperBelt = () => {
         ]}
         frustumCulled={false}
       />
+
     </>
   );
 };

@@ -1,3 +1,4 @@
+import { SimulationMode } from "@/lib/simulationTime";
 import * as THREE from "three";
 
 export type PlasmaColors = {
@@ -21,8 +22,18 @@ export type PlanetType = {
   name: string;
   size: number;
   distance: number;
-  speed: number;
+
+  // 🪐 Real orbital period
+  orbitalPeriodDays: number;
+
+  // 🔄 Axial rotation
+  rotationPeriodHours: number;
+  rotationDirection?: 1 | -1;
+
+  // Legacy / informational
+  speed?: number;
   realSpeed?: number;
+
   texture: string;
   moons: number;
 
@@ -64,7 +75,7 @@ export type PlanetSelection = {
 
 export type PlanetComponentProps = {
   planet: PlanetType;
-  speed: number;
+  simulationMode: SimulationMode;
   selectedPlanet: string;
   setRef: (
     name: string,

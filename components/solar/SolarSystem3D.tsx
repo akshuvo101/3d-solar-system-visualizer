@@ -1,4 +1,3 @@
-
 import { planetData } from "@/lib/planetData";
 import { Canvas } from "@react-three/fiber";
 import { StarField } from "./StarField";
@@ -13,15 +12,16 @@ import ZoomControls from "../ui/Button";
 import { DeepSpace } from "./DeepSpace";
 import { AsteroidBelt } from "./AsteroidBelt";
 import { KuiperBelt } from "./KuiperBelt";
+import { SIMULATION_MODES } from "@/lib/simulationTime";
 
 type Props = {
-  speed: number;
+  simulationMode: keyof typeof SIMULATION_MODES;
   selectedPlanet: string;
   onPlanetClick: (planet: any) => void;
 };
 
 export default function SolarSystem3D({
-  speed,
+  simulationMode,
   selectedPlanet,
   onPlanetClick,
 }: Props) {
@@ -31,35 +31,41 @@ export default function SolarSystem3D({
 
   const setRef = (
     name: string,
-    ref: React.RefObject<THREE.Group | null>
+    ref: React.RefObject<THREE.Group | null>,
   ) => {
     planetRefs.current[name] = ref;
   };
 
   const controlsRef = useRef<any>(null);
 
-  /*
-   * ============================================================
-   * 🔍 MANUAL ZOOM IN
-   * ============================================================
-   */
-  const zoomIn = () => {
-    if (!controlsRef.current) return;
+  // ============================================================
+  // 🔍 MANUAL ZOOM IN
+  // ============================================================
 
-    controlsRef.current.dollyIn(1.2);
-    controlsRef.current.update();
+  const zoomIn = () => {
+    const controls = controlsRef.current;
+
+    if (!controls || !controls.enabled) {
+      return;
+    }
+
+    controls.dollyIn(1.2);
+    controls.update();
   };
 
-  /*
-   * ============================================================
-   * 🔎 MANUAL ZOOM OUT
-   * ============================================================
-   */
-  const zoomOut = () => {
-    if (!controlsRef.current) return;
+  // ============================================================
+  // 🔎 MANUAL ZOOM OUT
+  // ============================================================
 
-    controlsRef.current.dollyOut(1.2);
-    controlsRef.current.update();
+  const zoomOut = () => {
+    const controls = controlsRef.current;
+
+    if (!controls || !controls.enabled) {
+      return;
+    }
+
+    controls.dollyOut(1.2);
+    controls.update();
   };
 
   return (
@@ -78,71 +84,35 @@ export default function SolarSystem3D({
           far: 5000,
         }}
         dpr={[1, 2]}
+        shadows
+        gl={{
+          antialias: true,
+          powerPreference: "high-performance",
+        }}
       >
         {/* ======================================================
-            🎥 PROFESSIONAL 3D CAMERA
+            🎥 ORBIT CONTROLS
             ====================================================== */}
 
         <OrbitControls
           ref={controlsRef}
           makeDefault
-
-          /*
-           * 🖱️ Full 360° rotation
-           */
-          enableRotate
-          rotateSpeed={0.55}
-
-          /*
-           * 🔍 Smooth zoom
-           */
-          enableZoom
-          zoomSpeed={0.75}
-
-          /*
-           * ✨ Cinematic damping
-           */
-          enableDamping
-          dampingFactor={0.045}
-
-          /*
-           * 🚫 No camera panning
-           */
+          enableRotate={true}
+          enableZoom={true}
           enablePan={false}
-
-          /*
-           * 📏 VERY LARGE ZOOM RANGE
-           *
-           * User can completely leave
-           * the selected planet.
-           */
+          enableDamping={true}
+          dampingFactor={0.045}
+          rotateSpeed={0.55}
+          zoomSpeed={0.75}
           minDistance={4}
           maxDistance={2500}
-
-          /*
-           * ↕️ Almost full vertical rotation
-           */
           minPolarAngle={0.05}
           maxPolarAngle={Math.PI - 0.05}
-
-          /*
-           * 🔄 Unlimited horizontal rotation
-           */
-          minAzimuthAngle={-Infinity}
-          maxAzimuthAngle={Infinity}
-
-          /*
-           * 🖱️ Mouse controls
-           */
           mouseButtons={{
             LEFT: THREE.MOUSE.ROTATE,
             MIDDLE: THREE.MOUSE.DOLLY,
             RIGHT: THREE.MOUSE.ROTATE,
           }}
-
-          /*
-           * 📱 Touch controls
-           */
           touches={{
             ONE: THREE.TOUCH.ROTATE,
             TWO: THREE.TOUCH.DOLLY_ROTATE,
@@ -177,10 +147,32 @@ export default function SolarSystem3D({
             ☀️ SUN
             ====================================================== */}
 
-        <Sun />
+        <Sun setRef={setRef} />
 
         {/* ======================================================
-            🪐 PLANET ORBIT PATHS
+            💡 SUN LIGHT
+            ====================================================== */}
+
+        <pointLight
+          position={[0, 0, 0]}
+          intensity={50}
+          distance={0}
+          decay={0.8}
+          castShadow
+          shadow-mapSize-width={2048}
+          shadow-mapSize-height={2048}
+          shadow-bias={-0.0002}
+          shadow-normalBias={0.02}
+        />
+
+        {/* ======================================================
+            🌙 SOFT AMBIENT LIGHT
+            ====================================================== */}
+
+        <ambientLight intensity={0.035} />
+
+        {/* ======================================================
+            🪐 ORBIT PATHS
             ====================================================== */}
 
         {planetData.map((planet, index) => (
@@ -192,14 +184,14 @@ export default function SolarSystem3D({
         ))}
 
         {/* ======================================================
-            🌍 PLANETS + MOONS
+            🌍 PLANETS
             ====================================================== */}
 
         {planetData.map((planet) => (
           <Planet
             key={planet.name}
             planet={planet}
-            speed={speed}
+            simulationMode={simulationMode}
             selectedPlanet={selectedPlanet}
             setRef={setRef}
             onClick={onPlanetClick}
@@ -207,12 +199,13 @@ export default function SolarSystem3D({
         ))}
 
         {/* ======================================================
-            🎯 CINEMATIC PLANET CAMERA
+            🎯 CAMERA CONTROLLER
             ====================================================== */}
 
         <CameraController
           selectedPlanet={selectedPlanet}
           refs={planetRefs}
+          controlsRef={controlsRef}
         />
       </Canvas>
 

@@ -5,7 +5,12 @@ export const planetData: PlanetType[] = [
     name: "Mercury",
     size: 1,
     distance: 12,
-    speed: 1.6,
+
+    // 🪐 Orbital & axial rotation
+    orbitalPeriodDays: 87.969,
+    rotationPeriodHours: 1407.6,
+    rotationDirection: 1,
+
     realSpeed: 170000,
     texture: "/textures/mercury.jpeg",
     moons: 0,
@@ -32,7 +37,12 @@ export const planetData: PlanetType[] = [
     name: "Venus",
     size: 1.5,
     distance: 16,
-    speed: 1.2,
+
+    // 🪐 Orbital & axial rotation
+    orbitalPeriodDays: 224.701,
+    rotationPeriodHours: 5832,
+    rotationDirection: -1,
+
     realSpeed: 126000,
     texture: "/textures/venus.jpeg",
     moons: 0,
@@ -59,7 +69,12 @@ export const planetData: PlanetType[] = [
     name: "Earth",
     size: 2,
     distance: 20,
-    speed: 1,
+
+    // 🪐 Orbital & axial rotation
+    orbitalPeriodDays: 365.256,
+    rotationPeriodHours: 23.934,
+    rotationDirection: 1,
+
     realSpeed: 107000,
     texture: "/textures/earth.jpg",
     moons: 1,
@@ -99,7 +114,12 @@ export const planetData: PlanetType[] = [
     name: "Mars",
     size: 1.3,
     distance: 24,
-    speed: 0.8,
+
+    // 🪐 Orbital & axial rotation
+    orbitalPeriodDays: 686.98,
+    rotationPeriodHours: 24.623,
+    rotationDirection: 1,
+
     realSpeed: 87000,
     texture: "/textures/mars.jpg",
     moons: 2,
@@ -148,7 +168,12 @@ export const planetData: PlanetType[] = [
     name: "Jupiter",
     size: 4,
     distance: 32,
-    speed: 0.5,
+
+    // 🪐 Orbital & axial rotation
+    orbitalPeriodDays: 4332.59,
+    rotationPeriodHours: 9.925,
+    rotationDirection: 1,
+
     realSpeed: 47000,
     texture: "/textures/jupiter.jpg",
     moons: 79,
@@ -216,7 +241,12 @@ export const planetData: PlanetType[] = [
     name: "Saturn",
     size: 3.5,
     distance: 40,
-    speed: 0.4,
+
+    // 🪐 Orbital & axial rotation
+    orbitalPeriodDays: 10759.22,
+    rotationPeriodHours: 10.656,
+    rotationDirection: 1,
+
     realSpeed: 35000,
     texture: "/textures/saturn.jpg",
     moons: 83,
@@ -310,7 +340,12 @@ export const planetData: PlanetType[] = [
     name: "Uranus",
     size: 2.5,
     distance: 48,
-    speed: 0.3,
+
+    // 🪐 Orbital & axial rotation
+    orbitalPeriodDays: 30688.5,
+    rotationPeriodHours: 17.24,
+    rotationDirection: -1,
+
     realSpeed: 24000,
     texture: "/textures/uranus.jpeg",
     moons: 27,
@@ -386,7 +421,12 @@ export const planetData: PlanetType[] = [
     name: "Neptune",
     size: 2.5,
     distance: 56,
-    speed: 0.2,
+
+    // 🪐 Orbital & axial rotation
+    orbitalPeriodDays: 60182,
+    rotationPeriodHours: 16.11,
+    rotationDirection: 1,
+
     realSpeed: 19000,
     texture: "/textures/astronomy.jpg",
     moons: 14,

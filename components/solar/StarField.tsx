@@ -2,7 +2,10 @@ import { STAR_POSITIONS } from "@/lib/constants";
 
 export const StarField = () => {
   return (
-    <points frustumCulled={false}>
+    <points
+      frustumCulled={false}
+      renderOrder={-10}
+    >
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"
@@ -11,12 +14,13 @@ export const StarField = () => {
       </bufferGeometry>
 
       <pointsMaterial
-        color="#c9d6ff"
-        size={0.7}
+        color="#dbe6ff"
+        size={0.42}
         sizeAttenuation
         transparent
-        opacity={0.9}
+        opacity={0.72}
         depthWrite={false}
+        depthTest
       />
     </points>
   );

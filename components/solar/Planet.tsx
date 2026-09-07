@@ -1,117 +1,304 @@
-import { Ring, Sphere, useTexture } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { Sphere } from "@react-three/drei";
+import { useFrame, useThree } from "@react-three/fiber";
+import { useEffect, useRef } from "react";
 import { Moon } from "./Moon";
+import { Earth } from "./Earth";
+import { Mars } from "./Mars";
+import { Mercury } from "./Mercury";
+import { Venus } from "./Venus";
+import { Jupiter } from "./Jupiter";
+import { Saturn } from "./Saturn";
 import * as THREE from "three";
 import { PlanetComponentProps } from "@/types";
-import { createPlanetPlasmaMaterial } from "@/shaders/planetShader";
+import { SIMULATION_MODES } from "@/lib/simulationTime";
+import { Uranus } from "./Uranus";
+import { Neptune } from "./Neptune";
 
 export const Planet = ({
   planet,
-  speed,
+  simulationMode,
+  selectedPlanet,
   setRef,
   onClick,
 }: PlanetComponentProps) => {
   const groupRef = useRef<THREE.Group | null>(null);
 
-  const texture = useTexture(planet.texture);
+  const { camera } = useThree();
 
-  const colors = planet.plasmaColors || {
-    a: "#ffffff",
-    b: "#cccccc",
-    c: "#999999",
-  };
+  // ============================================================
+  // 🎥 SMOOTH ZOOM SPEED
+  // ============================================================
 
-  const material = useMemo(() => {
-    return createPlanetPlasmaMaterial(texture, colors);
-  }, [texture, colors]);
+  const currentSpeedMultiplier = useRef(1);
+
+  // ============================================================
+  // 🪐 ORBIT ANGLE
+  // ============================================================
+
+  const orbitalAngle = useRef(0);
+
+  // ============================================================
+  // 🎥 LAST FRAME TIME
+  // ============================================================
+
+  const lastTime = useRef(0);
 
   useFrame(({ clock }, delta) => {
-    const t = clock.getElapsedTime() * planet.speed * speed;
-
     if (!groupRef.current) return;
 
-    // 🌍 Planet orbit around the Sun
+    // ============================================================
+    // ⏱️ SIMULATION SPEED
+    // ============================================================
+
+    const daysPerSecond =
+      SIMULATION_MODES[simulationMode].daysPerSecond;
+
+    // ============================================================
+    // 🎥 FIND SELECTED PLANET
+    // ============================================================
+
+    let targetDistance = 80;
+
+    if (selectedPlanet) {
+      const selectedRef =
+        groupRef.current.parent?.children.find(
+          (child) => {
+            return (
+              child.userData?.planetName ===
+              selectedPlanet
+            );
+          }
+        );
+
+      if (selectedRef) {
+        targetDistance =
+          camera.position.distanceTo(
+            selectedRef.getWorldPosition(
+              new THREE.Vector3()
+            )
+          );
+      }
+    }
+
+    // ============================================================
+    // 🔍 ZOOM SPEED
+    // ============================================================
+    //
+    // Close camera  → slower
+    // Far camera    → faster
+    //
+    // IMPORTANT:
+    // The value changes smoothly so planets never jump.
+    // ============================================================
+
+    const MIN_DISTANCE = 8;
+    const MAX_DISTANCE = 150;
+
+    const MIN_SPEED = 0.35;
+    const MAX_SPEED = 2.2;
+
+    const normalizedZoom =
+      THREE.MathUtils.clamp(
+        (targetDistance - MIN_DISTANCE) /
+          (MAX_DISTANCE - MIN_DISTANCE),
+        0,
+        1
+      );
+
+    const targetSpeedMultiplier =
+      THREE.MathUtils.lerp(
+        MIN_SPEED,
+        MAX_SPEED,
+        normalizedZoom
+      );
+
+    currentSpeedMultiplier.current =
+      THREE.MathUtils.lerp(
+        currentSpeedMultiplier.current,
+        targetSpeedMultiplier,
+        0.06
+      );
+
+    // ============================================================
+    // 🪐 PLANET ORBIT
+    // ============================================================
+
+    const orbitalSpeed =
+      (daysPerSecond /
+        planet.orbitalPeriodDays) *
+      Math.PI *
+      2;
+
+    orbitalAngle.current -=
+      orbitalSpeed *
+      currentSpeedMultiplier.current *
+      delta;
+
     groupRef.current.position.x =
-      planet.distance * Math.cos(t);
+      planet.distance *
+      Math.cos(orbitalAngle.current);
 
     groupRef.current.position.z =
-      planet.distance * Math.sin(t);
+      planet.distance *
+      Math.sin(orbitalAngle.current);
 
-    // 🌀 Planet rotation
-    groupRef.current.rotation.y += delta * 0.3;
+    // ============================================================
+    // 🌀 GENERIC AXIAL ROTATION
+    // ============================================================
 
-    // 🔥 Shader animation
-    const time = clock.getElapsedTime();
+    if (
+      planet.name !== "Earth" &&
+      planet.name !== "Mars" &&
+      planet.name !== "Mercury" &&
+      planet.name !== "Venus" &&
+      planet.name !== "Jupiter" &&
+      planet.name !== "Saturn" &&
+      planet.name !== "Uranus" &&
+      planet.name !== "Neptune"
+    ) {
+      const rotationDirection =
+        planet.rotationDirection ?? 1;
 
-    if (material.uniforms.uTime) {
-      material.uniforms.uTime.value = time;
+      groupRef.current.rotation.y +=
+        delta *
+        0.3 *
+        rotationDirection;
     }
+
+    lastTime.current =
+      clock.getElapsedTime();
   });
 
+  // ============================================================
+  // 🎯 STORE PLANET REFERENCE
+  // ============================================================
+
   useEffect(() => {
-    setRef(planet.name, groupRef);
+    groupRef.current!.userData.planetName =
+      planet.name;
+
+    setRef(
+      planet.name,
+      groupRef
+    );
   }, [planet.name, setRef]);
+
+  // ============================================================
+  // 🖱️ PLANET CLICK DATA
+  // ============================================================
+
+  const handleClick = () => {
+    onClick({
+      name: planet.name,
+      distance: planet.distance,
+      speed: planet.speed,
+      realSpeed: planet.realSpeed,
+      fact: planet.fact,
+
+      type: planet.type,
+      radius: planet.radius,
+      mass: planet.mass,
+      gravity: planet.gravity,
+      temperature: planet.temperature,
+      dayLength: planet.dayLength,
+      yearLength: planet.yearLength,
+      moons: planet.moons,
+      gravityNote: planet.gravityNote,
+    });
+  };
 
   return (
     <group ref={groupRef}>
 
-      {/* 🌍 Planet */}
-      <Sphere
-        onClick={() =>
-          onClick({
-            name: planet.name,
-            distance: planet.distance,
-            speed: planet.speed,
-            realSpeed: planet.realSpeed,
-            fact: planet.fact,
+      {/* ======================================================
+          🌍 EARTH
+          ====================================================== */}
 
-            type: planet.type,
-            radius: planet.radius,
-            mass: planet.mass,
-            gravity: planet.gravity,
-            temperature: planet.temperature,
-            dayLength: planet.dayLength,
-            yearLength: planet.yearLength,
-            moons: planet.moons,
-            gravityNote: planet.gravityNote,
-          })
-        }
-        args={[planet.size * 1.05, 32, 32]}
-      >
-        <meshBasicMaterial
-          color={planet.plasmaColors?.a || "#ffffff"}
-          transparent
-          opacity={0.15}
-          blending={THREE.AdditiveBlending}
-        />
-      </Sphere>
+      {planet.name === "Earth" ? (
+        <group onClick={handleClick}>
+          <Earth />
+        </group>
 
-      {/* 🪐 Saturn's Rings */}
-      {planet.name === "Saturn" && (
-        <Ring
+      ) : planet.name === "Mars" ? (
+
+        <group onClick={handleClick}>
+          <Mars />
+        </group>
+
+      ) : planet.name === "Mercury" ? (
+
+        <group onClick={handleClick}>
+          <Mercury />
+        </group>
+
+      ) : planet.name === "Venus" ? (
+
+        <group onClick={handleClick}>
+          <Venus />
+        </group>
+
+      ) : planet.name === "Jupiter" ? (
+
+        <group onClick={handleClick}>
+          <Jupiter />
+        </group>
+
+      ) : planet.name === "Saturn" ? (
+
+        <group onClick={handleClick}>
+          <Saturn />
+        </group>
+
+      ) : planet.name === "Uranus" ? (
+
+        <group onClick={handleClick}>
+          <Uranus />
+        </group>
+
+      ) : planet.name === "Neptune" ? (
+
+        <group onClick={handleClick}>
+          <Neptune />
+        </group>
+
+      ) : (
+
+        <Sphere
+          onClick={handleClick}
           args={[
-            planet.size * 1.5,
-            planet.size * 2,
-            64,
+            planet.size * 1.05,
+            32,
+            32,
           ]}
-          rotation={[Math.PI / 2, 0, 0]}
         >
           <meshBasicMaterial
-            color="white"
-            side={THREE.DoubleSide}
+            color={
+              planet.plasmaColors?.a ||
+              "#ffffff"
+            }
+            transparent
+            opacity={0.15}
+            blending={
+              THREE.AdditiveBlending
+            }
           />
-        </Ring>
+        </Sphere>
       )}
 
-      {/* 🌙 Major / Visual Moons */}
+      {/* ======================================================
+          🌙 MAJOR / VISUAL MOONS
+          ====================================================== */}
+
       <group>
-        {planet.moonSystem?.map((moon) => (
-          <Moon
-            key={moon.name}
-            moon={moon}
-          />
-        ))}
+        {planet.moonSystem?.map(
+          (moon) => (
+            <Moon
+              key={moon.name}
+              moon={moon}
+              simulationMode={simulationMode}
+            />
+          )
+        )}
       </group>
 
     </group>

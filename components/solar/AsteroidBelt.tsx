@@ -2,9 +2,9 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
-const ASTEROID_COUNT = 1100;
-const DUST_COUNT = 2600;
-const FEATURED_COUNT = 18;
+const ASTEROID_COUNT = 650;
+const DUST_COUNT = 1000;
+const FEATURED_COUNT = 10;
 
 type Asteroid = {
     angle: number;
@@ -59,13 +59,13 @@ export const AsteroidBelt = () => {
 
     const asteroids = useMemo<Asteroid[]>(() => {
         const rockColors = [
-            "#5c554d",
-            "#70685e",
-            "#82786b",
-            "#918477",
-            "#665f57",
-            "#9a8f80",
-            "#756c62",
+            "#3f3a35",
+            "#4b4540",
+            "#575049",
+            "#625a52",
+            "#514b45",
+            "#6b6259",
+            "#45413c",
         ];
 
         return Array.from(
@@ -169,7 +169,8 @@ export const AsteroidBelt = () => {
                 x * variation,
                 y *
                 (0.82 +
-                    Math.random() * 0.36),
+                    Math.random() *
+                    0.36),
                 z * variation
             );
         }
@@ -181,12 +182,23 @@ export const AsteroidBelt = () => {
         return geo;
     }, []);
 
+    // =====================================================
+    // 🪨 REALISTIC ROCK MATERIAL
+    // =====================================================
+
     const material = useMemo(() => {
         return new THREE.MeshStandardMaterial({
-            color: "#ffffff",
-            roughness: 0.96,
+            color: "#302d2a",
+
+            roughness: 1,
             metalness: 0,
+
             flatShading: true,
+
+            emissive: "#000000",
+            emissiveIntensity: 0,
+
+            envMapIntensity: 0,
         });
     }, []);
 
@@ -197,14 +209,16 @@ export const AsteroidBelt = () => {
     const featuredAsteroids =
         useMemo<FeaturedAsteroid[]>(() => {
             return Array.from(
-                { length: FEATURED_COUNT },
+                {
+                    length: FEATURED_COUNT,
+                },
                 (_, index) => {
                     const colors = [
-                        "#a89b8b",
-                        "#b7a995",
-                        "#8f8172",
-                        "#c0b19d",
-                        "#776d62",
+                        "#625a52",
+                        "#6e645b",
+                        "#554e47",
+                        "#766b60",
+                        "#49443f",
                     ];
 
                     return {
@@ -218,28 +232,23 @@ export const AsteroidBelt = () => {
 
                         radius:
                             27.2 +
-                            Math.random() *
-                            4.4,
+                            Math.random() * 4.4,
 
                         height:
                             (Math.random() - 0.5) *
                             2.2,
 
-                        // Larger visible rocks
                         size:
                             0.18 +
-                            Math.random() *
-                            0.25,
+                            Math.random() * 0.25,
 
                         speed:
                             0.055 +
-                            Math.random() *
-                            0.09,
+                            Math.random() * 0.09,
 
                         rotationSpeed:
                             0.25 +
-                            Math.random() *
-                            0.7,
+                            Math.random() * 0.7,
 
                         rotationX:
                             Math.random() *
@@ -297,8 +306,7 @@ export const AsteroidBelt = () => {
 
                 const variation =
                     0.72 +
-                    Math.random() *
-                    0.55;
+                    Math.random() * 0.55;
 
                 position.setXYZ(
                     i,
@@ -321,13 +329,24 @@ export const AsteroidBelt = () => {
             return geo;
         }, []);
 
+    // =====================================================
+    // 🪨 FEATURED ROCK MATERIAL
+    // =====================================================
+
     const featuredMaterial =
         useMemo(() => {
             return new THREE.MeshStandardMaterial({
-                color: "#ffffff",
-                roughness: 0.88,
+                color: "#38332f",
+
+                roughness: 1,
                 metalness: 0,
+
                 flatShading: true,
+
+                emissive: "#000000",
+                emissiveIntensity: 0,
+
+                envMapIntensity: 0,
             });
         }, []);
 
@@ -356,7 +375,6 @@ export const AsteroidBelt = () => {
                     26.5 +
                     Math.random() * 5.8;
 
-                // Much thinner than asteroid belt
                 const height =
                     (Math.random() - 0.5) *
                     2.8;
@@ -379,12 +397,18 @@ export const AsteroidBelt = () => {
     const dustMaterial =
         useMemo(() => {
             return new THREE.PointsMaterial({
-                color: "#b9a99a",
-                size: 0.045,
+                color: "#8d8175",
+
+                size: 0.04,
+
                 sizeAttenuation: true,
+
                 transparent: true,
-                opacity: 0.26,
+
+                opacity: 0.10,
+
                 depthWrite: false,
+
                 blending:
                     THREE.AdditiveBlending,
             });
@@ -468,10 +492,8 @@ export const AsteroidBelt = () => {
                 );
 
                 dummy.scale.set(
-                    asteroid.size *
-                    0.9,
-                    asteroid.size *
-                    0.78,
+                    asteroid.size * 0.9,
+                    asteroid.size * 0.78,
                     asteroid.size
                 );
 
@@ -523,10 +545,8 @@ export const AsteroidBelt = () => {
                 );
 
                 dummy.scale.set(
-                    asteroid.size *
-                    1.15,
-                    asteroid.size *
-                    0.85,
+                    asteroid.size * 1.15,
+                    asteroid.size * 0.85,
                     asteroid.size
                 );
 
@@ -557,13 +577,17 @@ export const AsteroidBelt = () => {
         const time =
             clock.getElapsedTime();
 
-        // 🪨 Main asteroid belt
+        // =================================================
+        // 🪨 MAIN ASTEROIDS
+        // =================================================
+
         if (meshRef.current) {
             asteroids.forEach(
                 (asteroid, index) => {
                     const angle =
                         asteroid.angle +
-                        time * asteroid.speed;
+                        time *
+                        asteroid.speed;
 
                     const x =
                         Math.cos(angle) *
@@ -588,10 +612,8 @@ export const AsteroidBelt = () => {
                     );
 
                     dummy.scale.set(
-                        asteroid.size *
-                        0.9,
-                        asteroid.size *
-                        0.78,
+                        asteroid.size * 0.9,
+                        asteroid.size * 0.78,
                         asteroid.size
                     );
 
@@ -625,13 +647,19 @@ export const AsteroidBelt = () => {
                 true;
         }
 
-        // 🌟 Featured asteroids
-        if (featuredMeshRef.current) {
+        // =================================================
+        // 🌟 FEATURED ASTEROIDS
+        // =================================================
+
+        if (
+            featuredMeshRef.current
+        ) {
             featuredAsteroids.forEach(
                 (asteroid, index) => {
                     const angle =
                         asteroid.angle +
-                        time * asteroid.speed;
+                        time *
+                        asteroid.speed;
 
                     const x =
                         Math.cos(angle) *
@@ -656,10 +684,8 @@ export const AsteroidBelt = () => {
                     );
 
                     dummy.scale.set(
-                        asteroid.size *
-                        1.15,
-                        asteroid.size *
-                        0.85,
+                        asteroid.size * 1.15,
+                        asteroid.size * 0.85,
                         asteroid.size
                     );
 
@@ -693,35 +719,49 @@ export const AsteroidBelt = () => {
                 true;
         }
 
-        // ✨ Dust rotation
-        if (dustRef.current) {
-            dustRef.current.rotation.y = time * 0.025;
-            dustRef.current.rotation.x =
-                Math.sin(time * 0.08) * 0.008;
+        // =================================================
+        // ✨ DUST
+        // =================================================
 
-            const cameraDistance = camera.position.length();
+        if (dustRef.current) {
+            dustRef.current.rotation.y =
+                time * 0.025;
+
+            dustRef.current.rotation.x =
+                Math.sin(
+                    time * 0.08
+                ) * 0.008;
+
+            const cameraDistance =
+                camera.position.length();
 
             const fadeStart = 180;
             const fadeEnd = 500;
 
-            const fade = THREE.MathUtils.clamp(
-                1 -
-                (cameraDistance - fadeStart) /
-                (fadeEnd - fadeStart),
-                0,
-                1
-            );
+            const fade =
+                THREE.MathUtils.clamp(
+                    1 -
+                    (cameraDistance -
+                        fadeStart) /
+                    (fadeEnd -
+                        fadeStart),
+                    0,
+                    1
+                );
 
             const dustMaterial =
-                dustRef.current.material as THREE.PointsMaterial;
+                dustRef.current
+                    .material as THREE.PointsMaterial;
 
-            dustMaterial.opacity = 0.26 * fade;
+            dustMaterial.opacity =
+                0.10 * fade;
         }
     });
 
     return (
         <>
             {/* ✨ Fine cosmic dust */}
+
             <points
                 ref={dustRef}
                 geometry={
@@ -742,6 +782,7 @@ export const AsteroidBelt = () => {
             </points>
 
             {/* 🪨 Main asteroid population */}
+
             <instancedMesh
                 ref={meshRef}
                 args={[
@@ -750,9 +791,12 @@ export const AsteroidBelt = () => {
                     ASTEROID_COUNT,
                 ]}
                 frustumCulled={false}
+                castShadow
+                receiveShadow
             />
 
             {/* 🌟 Featured larger asteroids */}
+
             <instancedMesh
                 ref={featuredMeshRef}
                 args={[
@@ -761,6 +805,8 @@ export const AsteroidBelt = () => {
                     FEATURED_COUNT,
                 ]}
                 frustumCulled={false}
+                castShadow
+                receiveShadow
             />
         </>
     );

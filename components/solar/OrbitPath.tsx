@@ -18,15 +18,16 @@ const OrbitPath = ({
     if (!ref.current) return;
 
     const time =
-      clock.getElapsedTime() * 0.8 + index * 0.7;
+      clock.getElapsedTime() * 0.45 +
+      index * 0.7;
 
     const material =
       ref.current.material as THREE.MeshBasicMaterial;
 
-    // ✨ Very subtle breathing effect
+    // Subtle breathing — keeps orbit alive without looking animated
     material.opacity =
-      0.08 +
-      0.07 *
+      0.045 +
+      0.035 *
         (Math.sin(time) * 0.5 + 0.5);
   });
 
@@ -34,16 +35,16 @@ const OrbitPath = ({
     <Ring
       ref={ref}
       args={[
-        distance - 0.035,
-        distance + 0.035,
-        160,
+        distance - 0.025,
+        distance + 0.025,
+        192,
       ]}
       rotation={[-Math.PI / 2, 0, 0]}
     >
       <meshBasicMaterial
-        color="#ff4dc4"
+        color="#b9c9ff"
         transparent
-        opacity={0.12}
+        opacity={0.06}
         side={THREE.DoubleSide}
         blending={THREE.AdditiveBlending}
         depthWrite={false}
