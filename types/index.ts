@@ -1,4 +1,7 @@
-import { SimulationMode } from "@/lib/simulationTime";
+import {
+  SimulationMode,
+  PlaybackSpeed,
+} from "@/lib/simulationTime";
 import * as THREE from "three";
 
 export type PlasmaColors = {
@@ -76,6 +79,7 @@ export type PlanetSelection = {
 export type PlanetComponentProps = {
   planet: PlanetType;
   simulationMode: SimulationMode;
+  playbackSpeed: PlaybackSpeed;
   selectedPlanet: string;
   setRef: (
     name: string,

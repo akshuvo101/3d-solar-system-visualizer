@@ -1,4 +1,3 @@
-
 import { Sphere } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
@@ -75,9 +74,11 @@ export const Mercury = ({
         uniform float uTime;
         uniform vec3 uSunPosition;
 
-        // ======================================================
-        // HASH
-        // ======================================================
+        /*
+         * ======================================================
+         * HASH
+         * ======================================================
+         */
 
         float hash(vec2 p) {
 
@@ -95,9 +96,34 @@ export const Mercury = ({
           );
         }
 
-        // ======================================================
-        // NOISE
-        // ======================================================
+        /*
+         * ======================================================
+         * HASH 3D
+         * ======================================================
+         */
+
+        float hash3(vec3 p) {
+
+          return fract(
+            sin(
+              dot(
+                p,
+                vec3(
+                  127.1,
+                  311.7,
+                  74.7
+                )
+              )
+            ) *
+            43758.5453123
+          );
+        }
+
+        /*
+         * ======================================================
+         * VALUE NOISE
+         * ======================================================
+         */
 
         float noise(vec2 p) {
 
@@ -170,9 +196,11 @@ export const Mercury = ({
           u.y;
         }
 
-        // ======================================================
-        // FBM
-        // ======================================================
+        /*
+         * ======================================================
+         * FBM
+         * ======================================================
+         */
 
         float fbm(vec2 p) {
 
@@ -193,92 +221,430 @@ export const Mercury = ({
           return value;
         }
 
-        // ======================================================
-        // CRATER FIELD
-        // ======================================================
+        /*
+         * ======================================================
+         * CELL / VORONOI-LIKE STRUCTURE
+         * ======================================================
+         */
 
-        float craterField(vec2 uv) {
+        float craterCells(vec2 p) {
 
-          float large =
-            noise(
-              uv * 18.0
+          vec2 cell =
+            floor(p);
+
+          vec2 local =
+            fract(p);
+
+          float nearest =
+            10.0;
+
+          for(int y = -1; y <= 1; y++) {
+
+            for(int x = -1; x <= 1; x++) {
+
+              vec2 offset =
+                vec2(
+                  float(x),
+                  float(y)
+                );
+
+              vec2 randomPoint =
+                vec2(
+                  hash(
+                    cell +
+                    offset
+                  ),
+                  hash(
+                    cell +
+                    offset +
+                    vec2(
+                      17.3,
+                      41.7
+                    )
+                  )
+                );
+
+              vec2 difference =
+                offset +
+                randomPoint -
+                local;
+
+              float distanceValue =
+                dot(
+                  difference,
+                  difference
+                );
+
+              nearest =
+                min(
+                  nearest,
+                  distanceValue
+                );
+            }
+          }
+
+          return sqrt(nearest);
+        }
+
+        /*
+         * ======================================================
+         * PROCEDURAL CRATER
+         * ======================================================
+         */
+
+        float crater(
+          vec2 uv,
+          float scale,
+          float variation
+        ) {
+
+          vec2 p =
+            uv *
+            scale;
+
+          vec2 cell =
+            floor(p);
+
+          vec2 local =
+            fract(p);
+
+          float closest =
+            10.0;
+
+          float secondClosest =
+            10.0;
+
+          float selectedRandom =
+            0.0;
+
+          for(int y = -1; y <= 1; y++) {
+
+            for(int x = -1; x <= 1; x++) {
+
+              vec2 offset =
+                vec2(
+                  float(x),
+                  float(y)
+                );
+
+              vec2 id =
+                cell +
+                offset;
+
+              vec2 point =
+                vec2(
+                  hash(id),
+                  hash(
+                    id +
+                    vec2(
+                      13.7,
+                      91.2
+                    )
+                  )
+                );
+
+              /*
+               * Keep crater centers slightly irregular.
+               */
+
+              point =
+                mix(
+                  point,
+                  vec2(
+                    0.5
+                  ),
+                  variation
+                );
+
+              vec2 diff =
+                offset +
+                point -
+                local;
+
+              float d =
+                length(diff);
+
+              if(d < closest) {
+
+                secondClosest =
+                  closest;
+
+                closest =
+                  d;
+
+                selectedRandom =
+                  hash(
+                    id +
+                    vec2(
+                      73.1,
+                      29.4
+                    )
+                  );
+
+              } else if(
+                d <
+                secondClosest
+              ) {
+
+                secondClosest =
+                  d;
+              }
+            }
+          }
+
+          /*
+           * Different crater sizes.
+           */
+
+          float radius =
+            mix(
+              0.10,
+              0.25,
+              selectedRandom
             );
 
-          float medium =
-            noise(
-              uv * 42.0
+          /*
+           * Crater rim.
+           */
+
+          float rim =
+            smoothstep(
+              radius + 0.055,
+              radius,
+              closest
             );
 
-          float small =
+          rim *=
+            1.0 -
+            smoothstep(
+              radius,
+              radius - 0.025,
+              closest
+            );
+
+          /*
+           * Interior depression.
+           */
+
+          float interior =
+            1.0 -
+            smoothstep(
+              radius * 0.28,
+              radius * 0.82,
+              closest
+            );
+
+          /*
+           * Central floor.
+           */
+
+          float floorMask =
+            1.0 -
+            smoothstep(
+              0.0,
+              radius * 0.38,
+              closest
+            );
+
+          /*
+           * Slightly break circular perfection.
+           */
+
+          float irregular =
             noise(
-              uv * 90.0
+              (
+                cell +
+                vec2(
+                  selectedRandom
+                )
+              ) *
+              2.7
+            );
+
+          interior *=
+            mix(
+              0.82,
+              1.15,
+              irregular
             );
 
           return
-            large * 0.55 +
-            medium * 0.30 +
-            small * 0.15;
+            rim * 0.95 +
+            interior * 0.68 +
+            floorMask * 0.22;
         }
 
-        // ======================================================
-        // MAIN
-        // ======================================================
+        /*
+         * ======================================================
+         * LARGE CRATER BASINS
+         * ======================================================
+         */
+
+        float largeBasins(vec2 uv) {
+
+          vec2 p =
+            uv *
+            5.0;
+
+          float n =
+            crater(
+              p,
+              1.0,
+              0.12
+            );
+
+          float n2 =
+            crater(
+              uv +
+              vec2(
+                4.3,
+                8.1
+              ),
+              2.8,
+              0.28
+            );
+
+          return
+            n * 0.75 +
+            n2 * 0.35;
+        }
+
+        /*
+         * ======================================================
+         * SMALL CRATER FIELD
+         * ======================================================
+         */
+
+        float smallCraters(vec2 uv) {
+
+          float c1 =
+            crater(
+              uv,
+              38.0,
+              0.25
+            );
+
+          float c2 =
+            crater(
+              uv +
+              vec2(
+                7.2,
+                3.4
+              ),
+              65.0,
+              0.42
+            );
+
+          float c3 =
+            crater(
+              uv +
+              vec2(
+                12.1,
+                -8.3
+              ),
+              105.0,
+              0.55
+            );
+
+          return
+            c1 * 0.55 +
+            c2 * 0.32 +
+            c3 * 0.18;
+        }
+
+        /*
+         * ======================================================
+         * MAIN
+         * ======================================================
+         */
 
         void main() {
 
           vec2 uv =
             vUv;
 
-          // ==================================================
-          // ☿ MERCURY ROCK PALETTE
-          // ==================================================
+          /*
+           * ==================================================
+           * ☿ MERCURY COLOR PALETTE
+           * ==================================================
+           */
+
+          vec3 deepRock =
+            vec3(
+              0.040,
+              0.038,
+              0.036
+            );
 
           vec3 darkRock =
             vec3(
-              0.055,
-              0.053,
-              0.050
+              0.085,
+              0.082,
+              0.078
             );
 
-          vec3 grayRock =
+          vec3 midRock =
             vec3(
-              0.18,
               0.175,
-              0.165
+              0.168,
+              0.155
             );
 
           vec3 lightRock =
             vec3(
-              0.32,
-              0.31,
-              0.285
+              0.285,
+              0.270,
+              0.245
             );
 
           vec3 brightRock =
             vec3(
-              0.43,
-              0.41,
-              0.37
+              0.390,
+              0.370,
+              0.335
             );
 
-          // ==================================================
-          // 🪨 LARGE GEOLOGICAL REGIONS
-          // ==================================================
+          /*
+           * ==================================================
+           * 🪨 LARGE GEOLOGICAL VARIATION
+           * ==================================================
+           */
 
           float terrain =
             fbm(
-              uv * 3.2 +
+              uv *
+              3.0 +
               vec2(
-                4.0,
-                2.0
+                2.4,
+                5.7
               )
             );
 
+          float broadTerrain =
+            fbm(
+              uv *
+              1.45 +
+              vec2(
+                7.1,
+                -3.8
+              )
+            );
+
+          float combinedTerrain =
+            terrain *
+            0.72 +
+            broadTerrain *
+            0.28;
+
           vec3 surface =
             mix(
-              darkRock,
-              grayRock,
-              terrain
+              deepRock,
+              midRock,
+              smoothstep(
+                0.18,
+                0.62,
+                combinedTerrain
+              )
             );
 
           surface =
@@ -286,50 +652,33 @@ export const Mercury = ({
               surface,
               lightRock,
               smoothstep(
-                0.55,
-                0.78,
-                terrain
-              )
+                0.60,
+                0.82,
+                combinedTerrain
+              ) *
+              0.72
             );
 
-          // ==================================================
-          // 🕳️ CRATERS
-          // ==================================================
-
-          float craters =
-            craterField(uv);
-
-          float craterMask =
-            smoothstep(
-              0.56,
-              0.80,
-              craters
-            );
-
-          surface =
-            mix(
-              surface,
-              darkRock,
-              craterMask * 0.48
-            );
-
-          // ==================================================
-          // ⛰️ HIGHLANDS
-          // ==================================================
+          /*
+           * ==================================================
+           * 🏔️ HIGHLANDS
+           * ==================================================
+           */
 
           float highlands =
             fbm(
-              uv * 8.0 +
+              uv *
+              7.5 +
               vec2(
-                -2.0,
-                5.0
+                -4.2,
+                3.7
               )
             );
 
           float highlandMask =
             smoothstep(
-              0.68,
-              0.88,
+              0.61,
+              0.84,
               highlands
             );
 
@@ -337,28 +686,199 @@ export const Mercury = ({
             mix(
               surface,
               brightRock,
-              highlandMask * 0.40
+              highlandMask *
+              0.30
             );
 
-          // ==================================================
-          // 🪨 FINE ROCK DETAIL
-          // ==================================================
+          /*
+           * ==================================================
+           * 🕳️ LARGE CRATER BASINS
+           * ==================================================
+           */
 
-          float detail =
+          float basin =
+            largeBasins(
+              uv
+            );
+
+          float basinDark =
+            smoothstep(
+              0.38,
+              0.78,
+              basin
+            );
+
+          surface =
+            mix(
+              surface,
+              darkRock,
+              basinDark *
+              0.42
+            );
+
+          /*
+           * ==================================================
+           * 🕳️ MEDIUM CRATERS
+           * ==================================================
+           */
+
+          float mediumCrater =
+            crater(
+              uv +
+              vec2(
+                1.7,
+                8.4
+              ),
+              20.0,
+              0.30
+            );
+
+          float mediumMask =
+            smoothstep(
+              0.30,
+              0.92,
+              mediumCrater
+            );
+
+          surface =
+            mix(
+              surface,
+              darkRock,
+              mediumMask *
+              0.30
+            );
+
+          /*
+           * ==================================================
+           * 🪨 CRATER RIM HIGHLIGHT
+           * ==================================================
+           */
+
+          float rimNoise =
             noise(
-              uv * 100.0
+              uv *
+              35.0
+            );
+
+          float rimHighlight =
+            mediumCrater *
+            smoothstep(
+              0.40,
+              0.82,
+              rimNoise
+            );
+
+          surface +=
+            vec3(
+              0.075,
+              0.068,
+              0.058
+            ) *
+            rimHighlight *
+            0.34;
+
+          /*
+           * ==================================================
+           * 🪨 SMALL CRATERS
+           * ==================================================
+           */
+
+          float fineCraters =
+            smallCraters(
+              uv
+            );
+
+          float fineMask =
+            smoothstep(
+              0.35,
+              0.82,
+              fineCraters
+            );
+
+          surface =
+            mix(
+              surface,
+              darkRock,
+              fineMask *
+              0.17
+            );
+
+          /*
+           * ==================================================
+           * 🪨 FINE REGOLITH
+           * ==================================================
+           */
+
+          float regolith =
+            fbm(
+              uv *
+              120.0 +
+              vec2(
+                8.1,
+                -4.2
+              )
             );
 
           surface +=
             (
-              detail -
+              regolith -
               0.5
             ) *
-            0.028;
+            0.022;
 
-          // ==================================================
-          // ☀️ REAL SUN LIGHTING
-          // ==================================================
+          /*
+           * Very fine granular variation.
+           */
+
+          float grain =
+            noise(
+              uv *
+              220.0
+            );
+
+          surface +=
+            (
+              grain -
+              0.5
+            ) *
+            0.009;
+
+          /*
+           * ==================================================
+           * 🌑 SUBTLE DARK REGIONS
+           * ==================================================
+           */
+
+          float darkRegion =
+            fbm(
+              uv *
+              2.1 +
+              vec2(
+                -5.0,
+                7.2
+              )
+            );
+
+          float darkMask =
+            smoothstep(
+              0.28,
+              0.46,
+              darkRegion
+            );
+
+          surface =
+            mix(
+              surface,
+              darkRock,
+              darkMask *
+              0.12
+            );
+
+          /*
+           * ==================================================
+           * ☀️ SUN LIGHTING
+           * ==================================================
+           */
 
           vec3 normal =
             normalize(
@@ -377,14 +897,14 @@ export const Mercury = ({
               mercuryToSun
             );
 
-          // --------------------------------------------------
-          // Clean day/night transition
-          // --------------------------------------------------
+          /*
+           * Soft terminator.
+           */
 
           float daylight =
             smoothstep(
-              -0.06,
-              0.28,
+              -0.08,
+              0.24,
               NdotL
             );
 
@@ -400,26 +920,30 @@ export const Mercury = ({
               0.72
             );
 
-          // ==================================================
-          // 🌞 DAY SIDE
-          // ==================================================
+          /*
+           * ==================================================
+           * 🌞 DAY SIDE
+           * ==================================================
+           */
 
           float dayIntensity =
-            0.10 +
+            0.095 +
             directLight *
-            1.18;
+            1.20;
 
           surface *=
             dayIntensity;
 
-          // ==================================================
-          // 🔥 SUBTLE SUN WARMTH
-          // ==================================================
+          /*
+           * ==================================================
+           * 🌅 SUNLIGHT WARMTH
+           * ==================================================
+           */
 
           vec3 sunlightTint =
             vec3(
               1.0,
-              0.94,
+              0.935,
               0.84
             );
 
@@ -429,72 +953,119 @@ export const Mercury = ({
               surface *
               sunlightTint,
               daylight *
-              0.12
+              0.13
             );
 
-          // ==================================================
-          // 🌅 TWILIGHT / TERMINATOR
-          // ==================================================
+          /*
+           * ==================================================
+           * 🌅 TERMINATOR
+           * ==================================================
+           */
 
           float twilight =
             smoothstep(
-              -0.18,
-              0.12,
+              -0.20,
+              0.08,
               NdotL
             )
             *
             (
               1.0 -
               smoothstep(
-                0.05,
-                0.28,
+                0.02,
+                0.25,
                 NdotL
               )
             );
 
           vec3 warmTwilight =
             vec3(
-              0.16,
-              0.075,
-              0.025
+              0.13,
+              0.055,
+              0.018
             );
 
           surface +=
             warmTwilight *
             twilight *
-            0.055;
+            0.045;
 
-          // ==================================================
-          // 🌑 DEEP NIGHT SIDE
-          // ==================================================
+          /*
+           * ==================================================
+           * 🌑 NIGHT SIDE
+           * ==================================================
+           */
 
           float night =
             1.0 -
             daylight;
 
           surface *=
-            0.18 +
+            0.17 +
             daylight *
-            0.82;
+            0.83;
 
-          // Very subtle reflected-space light
+          /*
+           * Very subtle space reflection.
+           */
+
           surface +=
             vec3(
+              0.0038,
               0.0035,
-              0.0032,
-              0.0028
+              0.0032
             ) *
             night;
 
-          // ==================================================
-          // ✨ FINAL CONTRAST
-          // ==================================================
+          /*
+           * ==================================================
+           * 🌌 LIMB DEPTH
+           * ==================================================
+           */
+
+          float viewFacing =
+            max(
+              dot(
+                normal,
+                normalize(
+                  cameraPosition -
+                  vWorldPosition
+                )
+              ),
+              0.0
+            );
+
+          float limb =
+            pow(
+              1.0 -
+              viewFacing,
+              3.8
+            );
+
+          /*
+           * Keep limb extremely subtle.
+           */
+
+          surface +=
+            vec3(
+              0.018,
+              0.016,
+              0.013
+            ) *
+            limb *
+            daylight;
+
+          /*
+           * ==================================================
+           * FINAL CONTRAST
+           * ==================================================
+           */
 
           surface =
             max(
               surface,
               vec3(
-                0.001
+                0.0012
               )
             );
 
@@ -512,7 +1083,7 @@ export const Mercury = ({
 
   /*
    * ============================================================
-   * 🌫️ EXTREMELY SUBTLE MERCURY EXOSPHERE
+   * 🌫️ MERCURY EXOSPHERE
    * ============================================================
    */
 
@@ -531,16 +1102,16 @@ export const Mercury = ({
         glowColor: {
           value:
             new THREE.Color(
-              "#c8c3b7"
+              "#c9c2b5"
             ),
         },
 
         intensity: {
-          value: 0.055,
+          value: 0.035,
         },
 
         power: {
-          value: 5.5,
+          value: 5.8,
         },
       },
 
@@ -626,7 +1197,10 @@ export const Mercury = ({
       const time =
         clock.getElapsedTime();
 
-      // Mercury rotation
+      /*
+       * Mercury rotation.
+       */
+
       if (mercuryRef.current) {
 
         mercuryRef.current.rotation.y +=
@@ -634,15 +1208,19 @@ export const Mercury = ({
           rotationSpeed;
       }
 
-      // Extremely subtle exosphere pulse
+      /*
+       * Extremely subtle exosphere pulse.
+       */
+
       if (atmosphereRef.current) {
 
         const pulse =
           1 +
           Math.sin(
-            time * 0.8
+            time *
+            0.8
           ) *
-          0.001;
+          0.0012;
 
         atmosphereRef.current.scale.setScalar(
           pulse
@@ -667,11 +1245,7 @@ export const Mercury = ({
 
       <Sphere
         ref={mercuryRef}
-        args={[
-          1,
-          64,
-          64,
-        ]}
+        args={[1, 96, 96]}
         castShadow
         receiveShadow
       >

@@ -1,47 +1,127 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useRef } from "react";
 
 type Props = {
-  sourceUrl?: string;
+  backgroundUrl?: string;
+  planetUrl?: string;
   isEnabled?: boolean;
 };
 
-const extractYouTubeId = (url: string) => {
-  const regex =
-    /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
-  const match = url.match(regex);
-  return match?.[1] ?? null;
-};
-
 export default function AudioPlayer({
-  sourceUrl = "/audio/space.mp3",
+  backgroundUrl = "/audio/background.mp4",
+  planetUrl,
   isEnabled = true,
 }: Props) {
-  const youtubeId = useMemo(() => extractYouTubeId(sourceUrl), [sourceUrl]);
+  const backgroundAudioRef =
+    useRef<HTMLAudioElement | null>(null);
+
+  const planetAudioRef =
+    useRef<HTMLAudioElement | null>(null);
+
+  /*
+   * --------------------------------------------------
+   * Background Music
+   * --------------------------------------------------
+   *
+   * Background music keeps playing continuously.
+   * It does NOT stop when planet narration starts.
+   */
 
   useEffect(() => {
-    if (youtubeId || !isEnabled) return;
+    const audio =
+      backgroundAudioRef.current;
 
-    const audio = new Audio(sourceUrl);
-    audio.loop = true;
-    audio.volume = 0.3;
+    if (!audio) return;
+
+    if (!isEnabled) {
+      audio.pause();
+      return;
+    }
+
+    audio.volume = 0.25;
 
     audio.play().catch(() => {});
 
-    return () => audio.pause();
-  }, [isEnabled, sourceUrl, youtubeId]);
+    return () => {
+      audio.pause();
+    };
+  }, [isEnabled]);
 
-  if (youtubeId && isEnabled) {
-    return (
-      <iframe
-        title="Background Space Audio"
-        src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&loop=1&playlist=${youtubeId}`}
-        allow="autoplay; encrypted-media"
-        className="hidden"
+  /*
+   * --------------------------------------------------
+   * Planet Narration
+   * --------------------------------------------------
+   *
+   * Planet narration plays on top of the
+   * background music.
+   */
+
+  useEffect(() => {
+    const audio =
+      planetAudioRef.current;
+
+    if (!audio) return;
+
+    /*
+     * Stop previous planet narration
+     */
+    audio.pause();
+    audio.currentTime = 0;
+
+    /*
+     * No planet audio or music is OFF
+     */
+    if (!planetUrl || !isEnabled) {
+      return;
+    }
+
+    /*
+     * Play planet narration
+     */
+    audio.volume = 1;
+
+    audio.currentTime = 0;
+
+    audio.play().catch(() => {});
+
+    /*
+     * Cleanup when changing planet
+     */
+    return () => {
+      audio.pause();
+      audio.currentTime = 0;
+    };
+  }, [planetUrl, isEnabled]);
+
+  /*
+   * --------------------------------------------------
+   * Render
+   * --------------------------------------------------
+   */
+
+  return (
+    <>
+      {/* Background Music */}
+
+      <audio
+        ref={backgroundAudioRef}
+        src={backgroundUrl}
+        loop
+        preload="auto"
+        autoPlay
+        playsInline
       />
-    );
-  }
 
-  return null;
+      {/* Planet Narration */}
+
+      <audio
+        ref={planetAudioRef}
+        src={planetUrl}
+        preload="auto"
+        autoPlay
+        playsInline
+      />
+    </>
+  );
 }

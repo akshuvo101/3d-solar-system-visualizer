@@ -1,12 +1,17 @@
+"use client";
+
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { PLANET_CLOSEUP_CAMERA_DISTANCE } from "@/lib/planetVisualScale";
 
 type UseCameraProps = {
   selectedPlanet: string;
+
   refs: React.MutableRefObject<
     Record<string, React.RefObject<THREE.Group | null>>
   >;
+
   controlsRef?: React.RefObject<any>;
 };
 
@@ -15,17 +20,21 @@ type UseCameraProps = {
 // ============================================================
 
 const CAMERA_DISTANCES: Record<string, number> = {
+  /*
+   * ☀️ Sun is physically much larger than planets.
+   *
+   * Therefore we keep the camera much farther away.
+   */
   Sun: 45,
 
-  Mercury: 12,
-  Venus: 14,
-  Earth: 15,
-  Mars: 14,
-
-  Jupiter: 30,
-  Saturn: 34,
-  Uranus: 24,
-  Neptune: 24,
+  Mercury: PLANET_CLOSEUP_CAMERA_DISTANCE,
+  Venus: PLANET_CLOSEUP_CAMERA_DISTANCE,
+  Earth: PLANET_CLOSEUP_CAMERA_DISTANCE,
+  Mars: PLANET_CLOSEUP_CAMERA_DISTANCE,
+  Jupiter: PLANET_CLOSEUP_CAMERA_DISTANCE,
+  Saturn: PLANET_CLOSEUP_CAMERA_DISTANCE,
+  Uranus: PLANET_CLOSEUP_CAMERA_DISTANCE,
+  Neptune: PLANET_CLOSEUP_CAMERA_DISTANCE,
 };
 
 // ============================================================
@@ -35,15 +44,19 @@ const CAMERA_DISTANCES: Record<string, number> = {
 const MIN_DISTANCE = 5;
 const MAX_DISTANCE = 1200;
 
+/*
+ * Special minimum distance while viewing the Sun.
+ *
+ * This prevents the camera from entering the huge
+ * solar sphere and turning the entire screen red.
+ */
+const SUN_MIN_DISTANCE = 12;
+
 // ============================================================
 // 🎬 CAMERA TRANSITION
 // ============================================================
 
 const TRANSITION_SPEED = 7.5;
-
-// Maximum transition time.
-// This prevents a fast-moving inner planet from keeping
-// the camera in transition forever.
 
 const MAX_TRANSITION_TIME = 1.15;
 
@@ -51,11 +64,12 @@ const MAX_TRANSITION_TIME = 1.15;
 // 🎥 DEFAULT CAMERA DIRECTION
 // ============================================================
 
-const DEFAULT_CAMERA_DIRECTION = new THREE.Vector3(
-  1,
-  0.45,
-  1,
-).normalize();
+const DEFAULT_CAMERA_DIRECTION =
+  new THREE.Vector3(
+    1,
+    0.45,
+    1,
+  ).normalize();
 
 // ============================================================
 // 🎥 CAMERA CONTROLLER
@@ -108,39 +122,47 @@ export const useCamera = ({
     new THREE.Vector3(),
   );
 
-  const transitionDestinationCamera = useRef(
-    new THREE.Vector3(),
-  );
+  const transitionDestinationCamera =
+    useRef(
+      new THREE.Vector3(),
+    );
 
-  const transitionDestinationTarget = useRef(
-    new THREE.Vector3(),
-  );
+  const transitionDestinationTarget =
+    useRef(
+      new THREE.Vector3(),
+    );
 
-  const transitionPlanetPosition = useRef(
-    new THREE.Vector3(),
-  );
+  const transitionPlanetPosition =
+    useRef(
+      new THREE.Vector3(),
+    );
 
-  const transitionElapsed = useRef(0);
+  const transitionElapsed =
+    useRef(0);
 
-  const isTransitioning = useRef(false);
+  const isTransitioning =
+    useRef(false);
 
   // ==========================================================
   // 🔄 INITIALIZATION
   // ==========================================================
 
-  const initialized = useRef(false);
+  const initialized =
+    useRef(false);
 
   // ==========================================================
   // 🎥 TEMP VECTORS
   // ==========================================================
 
-  const offset = useRef(
-    new THREE.Vector3(),
-  );
+  const offset =
+    useRef(
+      new THREE.Vector3(),
+    );
 
-  const transitionOffset = useRef(
-    new THREE.Vector3(),
-  );
+  const transitionOffset =
+    useRef(
+      new THREE.Vector3(),
+    );
 
   // ==========================================================
   // 🎥 MAIN CAMERA LOOP
@@ -158,7 +180,7 @@ export const useCamera = ({
       controlsRef?.current;
 
     // ========================================================
-    // 🎯 GET EXACT PLANET WORLD POSITION
+    // 🎯 GET EXACT WORLD POSITION
     // ========================================================
 
     selectedRef.current.getWorldPosition(
@@ -186,7 +208,9 @@ export const useCamera = ({
 
     planetMovement.current
       .copy(target)
-      .sub(previousPlanetPosition.current);
+      .sub(
+        previousPlanetPosition.current,
+      );
 
     previousPlanetPosition.current.copy(
       target,
@@ -197,12 +221,14 @@ export const useCamera = ({
     // ========================================================
 
     if (isTransitioning.current) {
-      transitionElapsed.current += delta;
+      transitionElapsed.current +=
+        delta;
 
       const alpha =
         1 -
         Math.exp(
-          -TRANSITION_SPEED * delta,
+          -TRANSITION_SPEED *
+            delta,
         );
 
       // ------------------------------------------------------
@@ -253,10 +279,7 @@ export const useCamera = ({
         transitionTimedOut
       ) {
         // ----------------------------------------------------
-        // Get the planet's CURRENT position.
-        //
-        // The planet may have moved while the camera
-        // transition was happening.
+        // Get CURRENT selected object position.
         // ----------------------------------------------------
 
         selectedRef.current.getWorldPosition(
@@ -267,8 +290,7 @@ export const useCamera = ({
           planetPosition.current;
 
         // ----------------------------------------------------
-        // Calculate how far the planet moved since the
-        // transition started.
+        // Calculate movement during transition.
         // ----------------------------------------------------
 
         transitionOffset.current
@@ -278,9 +300,7 @@ export const useCamera = ({
           );
 
         // ----------------------------------------------------
-        // Shift camera and target by exactly the same amount.
-        //
-        // This prevents a jump when Year mode is running.
+        // Shift camera + target together.
         // ----------------------------------------------------
 
         camera.position.add(
@@ -294,7 +314,7 @@ export const useCamera = ({
         }
 
         // ----------------------------------------------------
-        // Rebuild the exact camera distance.
+        // Rebuild exact camera state.
         // ----------------------------------------------------
 
         if (controls) {
@@ -331,7 +351,7 @@ export const useCamera = ({
         );
 
         // ----------------------------------------------------
-        // Synchronize OrbitControls ONCE.
+        // Synchronize controls.
         // ----------------------------------------------------
 
         if (controls) {
@@ -341,7 +361,6 @@ export const useCamera = ({
 
           controls.update();
 
-          // Return full control to the user.
           controls.enabled = true;
         }
 
@@ -363,15 +382,6 @@ export const useCamera = ({
       planetMovement.current.lengthSq() >
       0.0000000001
     ) {
-      // ------------------------------------------------------
-      // Move camera and target together.
-      //
-      // This preserves:
-      // - zoom
-      // - camera angle
-      // - OrbitControls rotation
-      // ------------------------------------------------------
-
       camera.position.add(
         planetMovement.current,
       );
@@ -410,20 +420,11 @@ export const useCamera = ({
           offset.current.normalize(),
         );
       }
-
-      // ------------------------------------------------------
-      // IMPORTANT:
-      //
-      // OrbitControls remains enabled.
-      // It owns mouse rotation and zoom.
-      //
-      // We don't force update() here.
-      // This avoids fighting with OrbitControls' own frame
-      // update, especially in Year mode.
-      // ------------------------------------------------------
     } else {
       const currentDistance =
-        camera.position.distanceTo(target);
+        camera.position.distanceTo(
+          target,
+        );
 
       followDistance.current =
         THREE.MathUtils.clamp(
@@ -450,7 +451,7 @@ export const useCamera = ({
     }
 
     // ========================================================
-    // 🎯 GET CURRENT PLANET POSITION
+    // 🎯 GET CURRENT POSITION
     // ========================================================
 
     selectedRef.current.getWorldPosition(
@@ -488,17 +489,35 @@ export const useCamera = ({
     }
 
     // ========================================================
+    // 🎥 SPECIAL SUN CAMERA LIMIT
+    // ========================================================
+
+    if (controls) {
+      /*
+       * When Sun is selected, prevent OrbitControls
+       * from zooming inside the Sun.
+       */
+      controls.minDistance =
+        selectedPlanet === "Sun"
+          ? SUN_MIN_DISTANCE
+          : MIN_DISTANCE;
+    }
+
+    // ========================================================
     // 🎯 NEW CAMERA DISTANCE
     // ========================================================
 
     const newDistance =
-      CAMERA_DISTANCES[selectedPlanet] ??
-      25;
+      CAMERA_DISTANCES[
+        selectedPlanet
+      ] ?? 25;
 
     followDistance.current =
       THREE.MathUtils.clamp(
         newDistance,
-        MIN_DISTANCE,
+        selectedPlanet === "Sun"
+          ? SUN_MIN_DISTANCE
+          : MIN_DISTANCE,
         MAX_DISTANCE,
       );
 
@@ -521,7 +540,7 @@ export const useCamera = ({
     }
 
     // ========================================================
-    // 🪐 SAVE PLANET POSITION AT TRANSITION START
+    // 🪐 SAVE OBJECT POSITION
     // ========================================================
 
     transitionPlanetPosition.current.copy(
@@ -529,12 +548,16 @@ export const useCamera = ({
     );
 
     // ========================================================
-    // 🎥 BUILD FIXED TRANSITION DESTINATION
+    // 🎯 TRANSITION TARGET
     // ========================================================
 
     transitionDestinationTarget.current.copy(
       target,
     );
+
+    // ========================================================
+    // 🎥 BUILD CAMERA DESTINATION
+    // ========================================================
 
     transitionDestinationCamera.current
       .copy(target)
@@ -565,16 +588,23 @@ export const useCamera = ({
     isTransitioning.current = true;
 
     // ========================================================
-    // 🎛️ TEMPORARILY GIVE CAMERA OWNERSHIP TO THE
-    // CAMERA TRANSITION.
-    //
-    // This is safe because we ALWAYS re-enable controls
-    // when the transition finishes or times out.
+    // 🎛️ TEMPORARILY DISABLE CONTROLS
     // ========================================================
 
     if (controls) {
       controls.enabled = false;
     }
+
+    // ========================================================
+    // 🧹 CLEANUP
+    // ========================================================
+
+    return () => {
+      if (controls) {
+        controls.minDistance =
+          MIN_DISTANCE;
+      }
+    };
   }, [
     selectedPlanet,
     refs,

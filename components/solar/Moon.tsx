@@ -44,6 +44,8 @@ const PLANET_RADII: Record<string, number> = {
 
 const SHADOW_SOFTNESS = 0.22;
 
+const MOON_ORBIT_SCALE = 0.62;
+
 // Minimum distance from Sun required for a valid shadow caster.
 const MIN_OCCLUDER_DISTANCE = 0.001;
 
@@ -1011,18 +1013,22 @@ export const Moon = ({
         moon.inclination ?? 0
       );
 
-    const x =
+    const orbitDistance =
       moon.distance *
+      MOON_ORBIT_SCALE;
+
+    const x =
+      orbitDistance *
       Math.cos(angle);
 
     const z =
-      moon.distance *
+      orbitDistance *
       Math.sin(angle);
 
     const y =
       Math.sin(angle) *
       Math.sin(inclination) *
-      moon.distance;
+      orbitDistance;
 
     ref.current.position.set(
       x,

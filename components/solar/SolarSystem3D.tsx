@@ -1,6 +1,7 @@
+"use client";
+
 import { planetData } from "@/lib/planetData";
 import { Canvas } from "@react-three/fiber";
-import { StarField } from "./StarField";
 import { Sun } from "./Sun";
 import OrbitPath from "./OrbitPath";
 import { CameraController } from "./CameraController";
@@ -12,19 +13,30 @@ import ZoomControls from "../ui/Button";
 import { DeepSpace } from "./DeepSpace";
 import { AsteroidBelt } from "./AsteroidBelt";
 import { KuiperBelt } from "./KuiperBelt";
-import { SIMULATION_MODES } from "@/lib/simulationTime";
+import {
+  SIMULATION_MODES,
+  type PlaybackSpeed,
+} from "@/lib/simulationTime";
+import { CinematicController } from "./CinamaticController";
+import { StarField } from "./StarField";
 
 type Props = {
   simulationMode: keyof typeof SIMULATION_MODES;
+  playbackSpeed: PlaybackSpeed;
   selectedPlanet: string;
   onPlanetClick: (planet: any) => void;
 };
 
 export default function SolarSystem3D({
   simulationMode,
+  playbackSpeed,
   selectedPlanet,
   onPlanetClick,
 }: Props) {
+  // ============================================================
+  // 🪐 PLANET REFS
+  // ============================================================
+
   const planetRefs = useRef<
     Record<string, React.RefObject<THREE.Group | null>>
   >({});
@@ -36,7 +48,14 @@ export default function SolarSystem3D({
     planetRefs.current[name] = ref;
   };
 
+  // ============================================================
+  // 🎥 ORBIT CONTROLS REF
+  // ============================================================
+
   const controlsRef = useRef<any>(null);
+
+  const environmentRef =
+    useRef<THREE.Group | null>(null);
 
   // ============================================================
   // 🔍 MANUAL ZOOM IN
@@ -131,17 +150,18 @@ export default function SolarSystem3D({
 
         <StarField />
 
-        {/* ======================================================
-            🪨 ASTEROID BELT
-            ====================================================== */}
+        <group ref={environmentRef}>
+          <AsteroidBelt />
+          <KuiperBelt />
 
-        <AsteroidBelt />
-
-        {/* ======================================================
-            🧊 KUIPER BELT
-            ====================================================== */}
-
-        <KuiperBelt />
+          {planetData.map((planet, index) => (
+            <OrbitPath
+              key={planet.name}
+              distance={planet.distance}
+              index={index}
+            />
+          ))}
+        </group>
 
         {/* ======================================================
             ☀️ SUN
@@ -163,6 +183,7 @@ export default function SolarSystem3D({
           shadow-mapSize-height={2048}
           shadow-bias={-0.0002}
           shadow-normalBias={0.02}
+          shadow-radius={2}
         />
 
         {/* ======================================================
@@ -170,18 +191,6 @@ export default function SolarSystem3D({
             ====================================================== */}
 
         <ambientLight intensity={0.035} />
-
-        {/* ======================================================
-            🪐 ORBIT PATHS
-            ====================================================== */}
-
-        {planetData.map((planet, index) => (
-          <OrbitPath
-            key={planet.name}
-            distance={planet.distance}
-            index={index}
-          />
-        ))}
 
         {/* ======================================================
             🌍 PLANETS
@@ -192,11 +201,22 @@ export default function SolarSystem3D({
             key={planet.name}
             planet={planet}
             simulationMode={simulationMode}
+            playbackSpeed={playbackSpeed}
             selectedPlanet={selectedPlanet}
             setRef={setRef}
             onClick={onPlanetClick}
           />
         ))}
+
+        {/* ======================================================
+            🎬 CINEMATIC CONTROLLER
+            ====================================================== */}
+
+        <CinematicController
+          selectedPlanet={selectedPlanet}
+          planetRefs={planetRefs}
+          environmentRef={environmentRef}
+        />
 
         {/* ======================================================
             🎯 CAMERA CONTROLLER
