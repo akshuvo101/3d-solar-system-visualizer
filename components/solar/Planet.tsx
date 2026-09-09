@@ -83,10 +83,35 @@ export const Planet = ({
 
   /* ==========================================================
      🪐 ORBIT ANGLE
+
+     The current orbital angle is restored from localStorage
+     so refreshing the page does NOT reset the planet to
+     its original starting position.
      ========================================================== */
 
-  const orbitalAngle =
-    useRef(0);
+  const orbitalAngle = useRef<number>(
+    typeof window !== "undefined"
+      ? Number(
+          localStorage.getItem(
+            `solar-planet-angle-${planet.name}`,
+          ),
+        ) || 0
+      : 0,
+  );
+
+  /* ==========================================================
+     💾 ORBIT POSITION SAVE CONTROL
+
+     We don't write to localStorage every frame.
+     Instead, the position is saved approximately every
+     500ms to reduce unnecessary browser storage writes.
+     ========================================================== */
+
+  const lastSavedAngle = useRef<number>(
+    orbitalAngle.current,
+  );
+
+  const lastSaveTime = useRef<number>(0);
 
   /* ==========================================================
      🌀 SMOOTH SIMULATION TIME
@@ -249,6 +274,36 @@ export const Planet = ({
       );
 
     /* ========================================================
+       💾 SAVE CURRENT ORBIT POSITION
+
+       Save approximately every 500ms instead of every
+       frame.
+
+       This allows the next page refresh to restore the
+       planet very close to its previous position.
+       ======================================================== */
+
+    const now = performance.now();
+
+    if (
+      now - lastSaveTime.current > 500 &&
+      Math.abs(
+        orbitalAngle.current -
+          lastSavedAngle.current,
+      ) > 0.0001
+    ) {
+      localStorage.setItem(
+        `solar-planet-angle-${planet.name}`,
+        orbitalAngle.current.toString(),
+      );
+
+      lastSavedAngle.current =
+        orbitalAngle.current;
+
+      lastSaveTime.current = now;
+    }
+
+    /* ========================================================
        🌀 REAL AXIAL ROTATION
 
        Uses each planet's real rotation period.
@@ -335,6 +390,25 @@ export const Planet = ({
         rotationDirection;
     }
   });
+
+  /* ============================================================
+     💾 SAVE ORBIT POSITION ON UNMOUNT
+     ============================================================ */
+
+  useEffect(() => {
+    return () => {
+      if (
+        typeof window === "undefined"
+      ) {
+        return;
+      }
+
+      localStorage.setItem(
+        `solar-planet-angle-${planet.name}`,
+        orbitalAngle.current.toString(),
+      );
+    };
+  }, [planet.name]);
 
   /* ============================================================
      🎯 REGISTER PLANET REFERENCE
