@@ -1,52 +1,61 @@
 import { Ring, Sphere } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import * as THREE from "three";
 
-type UranusProps = {
-  rotationSpeed?: number;
-};
+// ============================================================
+// URANUS
+// ============================================================
+// Visual-only component.
+//
+// Planet rotation is controlled centrally by Planet.tsx using
+// the astronomy rotation model.
+//
+// Uranus uses spherical 3D procedural noise instead of UV-based
+// noise to eliminate longitude seams / column-wise artifacts.
+//
+// Uranus has an extreme axial tilt (~97.77°), which is handled
+// by Planet.tsx through the planet's axial tilt configuration.
+// ============================================================
 
-export const Uranus = ({
-  rotationSpeed = -0.09,
-}: UranusProps) => {
-  const uranusRef = useRef<THREE.Mesh>(null);
-  const atmosphereRef = useRef<THREE.Mesh>(null);
-  const ringGroupRef = useRef<THREE.Group>(null);
-
+export const Uranus = () => {
   // ============================================================
-  // URANUS BODY
+  // URANUS BODY MATERIAL
   // ============================================================
 
   const uranusMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
-        uTime: {
-          value: 0,
-        },
-
         uSunPosition: {
-          value: new THREE.Vector3(0, 0, 0),
+          value:
+            new THREE.Vector3(
+              0,
+              0,
+              0,
+            ),
         },
       },
 
       vertexShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
+        varying vec3 vLocalDirection;
         varying vec3 vWorldPosition;
+        varying vec3 vWorldNormal;
 
         void main() {
 
-          vUv = uv;
+          vLocalDirection =
+            normalize(position);
 
           vec4 worldPosition =
             modelMatrix *
-            vec4(position, 1.0);
+            vec4(
+              position,
+              1.0
+            );
 
           vWorldPosition =
             worldPosition.xyz;
 
-          vNormal =
+          vWorldNormal =
             normalize(
               mat3(modelMatrix) *
               normal
@@ -63,76 +72,56 @@ export const Uranus = ({
       `,
 
       fragmentShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
+        varying vec3 vLocalDirection;
         varying vec3 vWorldPosition;
+        varying vec3 vWorldNormal;
 
-        uniform float uTime;
         uniform vec3 uSunPosition;
 
         // ======================================================
-        // HASH
+        // 3D HASH
         // ======================================================
 
-        float hash(vec2 p) {
+        float hash31(vec3 p) {
+
+          p =
+            fract(
+              p *
+              0.3183099 +
+              vec3(
+                0.11,
+                0.17,
+                0.13
+              )
+            );
+
+          p *= 17.0;
 
           return fract(
-            sin(
-              dot(
-                p,
-                vec2(
-                  127.1,
-                  311.7
-                )
-              )
-            ) *
-            43758.5453123
+            p.x *
+            p.y *
+            p.z *
+            (
+              p.x +
+              p.y +
+              p.z
+            )
           );
         }
 
         // ======================================================
-        // NOISE
+        // 3D VALUE NOISE
         // ======================================================
 
-        float noise(vec2 p) {
+        float noise3(vec3 p) {
 
-          vec2 i =
+          vec3 i =
             floor(p);
 
-          vec2 f =
+          vec3 f =
             fract(p);
 
-          float a =
-            hash(i);
-
-          float b =
-            hash(
-              i +
-              vec2(
-                1.0,
-                0.0
-              )
-            );
-
-          float c =
-            hash(
-              i +
-              vec2(
-                0.0,
-                1.0
-              )
-            );
-
-          float d =
-            hash(
-              i +
-              vec2(
-                1.0,
-                1.0
-              )
-            );
-
-          vec2 u =
+          f =
             f *
             f *
             (
@@ -141,50 +130,335 @@ export const Uranus = ({
               f
             );
 
+          float n000 =
+            hash31(i);
+
+          float n100 =
+            hash31(
+              i +
+              vec3(
+                1.0,
+                0.0,
+                0.0
+              )
+            );
+
+          float n010 =
+            hash31(
+              i +
+              vec3(
+                0.0,
+                1.0,
+                0.0
+              )
+            );
+
+          float n110 =
+            hash31(
+              i +
+              vec3(
+                1.0,
+                1.0,
+                0.0
+              )
+            );
+
+          float n001 =
+            hash31(
+              i +
+              vec3(
+                0.0,
+                0.0,
+                1.0
+              )
+            );
+
+          float n101 =
+            hash31(
+              i +
+              vec3(
+                1.0,
+                0.0,
+                1.0
+              )
+            );
+
+          float n011 =
+            hash31(
+              i +
+              vec3(
+                0.0,
+                1.0,
+                1.0
+              )
+            );
+
+          float n111 =
+            hash31(
+              i +
+              vec3(
+                1.0,
+                1.0,
+                1.0
+              )
+            );
+
+          float nx00 =
+            mix(
+              n000,
+              n100,
+              f.x
+            );
+
+          float nx10 =
+            mix(
+              n010,
+              n110,
+              f.x
+            );
+
+          float nx01 =
+            mix(
+              n001,
+              n101,
+              f.x
+            );
+
+          float nx11 =
+            mix(
+              n011,
+              n111,
+              f.x
+            );
+
+          float nxy0 =
+            mix(
+              nx00,
+              nx10,
+              f.y
+            );
+
+          float nxy1 =
+            mix(
+              nx01,
+              nx11,
+              f.y
+            );
+
           return mix(
-            a,
-            b,
-            u.x
-          )
-          +
-          (
-            c -
-            a
-          ) *
-          u.y *
-          (
-            1.0 -
-            u.x
-          )
-          +
-          (
-            d -
-            b
-          ) *
-          u.x *
-          u.y;
+            nxy0,
+            nxy1,
+            f.z
+          );
         }
 
         // ======================================================
-        // FBM
+        // 3D FBM
         // ======================================================
 
-        float fbm(vec2 p) {
+        float fbm3(vec3 p) {
 
           float value = 0.0;
           float amplitude = 0.5;
 
-          for(int i = 0; i < 6; i++) {
+          for(int i = 0; i < 4; i++) {
 
             value +=
-              noise(p) *
+              noise3(p) *
               amplitude;
 
             p *= 2.0;
+
             amplitude *= 0.5;
           }
 
           return value;
+        }
+
+        // ======================================================
+        // RIDGED DETAIL
+        // ======================================================
+
+        float ridgedNoise(vec3 p) {
+
+          float n =
+            noise3(p);
+
+          return
+            1.0 -
+            abs(
+              n * 2.0 -
+              1.0
+            );
+        }
+
+        // ======================================================
+        // LARGE ATMOSPHERIC STRUCTURE
+        // ======================================================
+
+        float largeAtmosphere(
+          vec3 direction
+        ) {
+
+          vec3 p =
+            direction;
+
+          p.xz *= 2.8;
+          p.y *= 8.5;
+
+          return fbm3(
+            p *
+            0.72
+          );
+        }
+
+        // ======================================================
+        // MEDIUM ATMOSPHERIC STRUCTURE
+        // ======================================================
+
+        float mediumAtmosphere(
+          vec3 direction
+        ) {
+
+          vec3 p =
+            direction;
+
+          p.xz *= 7.0;
+          p.y *= 20.0;
+
+          float broad =
+            fbm3(
+              p *
+              0.62 +
+              vec3(
+                2.7,
+                5.1,
+                8.3
+              )
+            );
+
+          float fine =
+            ridgedNoise(
+              p *
+              1.65
+            );
+
+          return
+            broad *
+            0.72 +
+            fine *
+            0.28;
+        }
+
+        // ======================================================
+        // URANUS BAND STRUCTURE
+        // ======================================================
+
+        float bandPattern(
+          vec3 direction
+        ) {
+
+          float latitude =
+            direction.y;
+
+          float broadBands =
+            sin(
+              latitude *
+              17.0
+            );
+
+          float mediumBands =
+            sin(
+              latitude *
+              36.0 +
+              sin(
+                latitude *
+                7.0
+              ) *
+              1.2
+            );
+
+          float fineBands =
+            sin(
+              latitude *
+              70.0 +
+              sin(
+                latitude *
+                15.0
+              ) *
+              1.4
+            );
+
+          float bands =
+            broadBands *
+            0.48 +
+            mediumBands *
+            0.34 +
+            fineBands *
+            0.18;
+
+          return
+            bands *
+            0.5 +
+            0.5;
+        }
+
+        // ======================================================
+        // BAND TURBULENCE
+        // ======================================================
+
+        float bandTurbulence(
+          vec3 direction
+        ) {
+
+          vec3 p =
+            direction;
+
+          p.xz *= 5.5;
+          p.y *= 24.0;
+
+          float n1 =
+            fbm3(
+              p *
+              0.72
+            );
+
+          float n2 =
+            noise3(
+              p *
+              2.0 +
+              vec3(
+                4.2,
+                7.8,
+                2.6
+              )
+            );
+
+          return
+            n1 *
+            0.76 +
+            n2 *
+            0.24;
+        }
+
+        // ======================================================
+        // POLAR MASK
+        // ======================================================
+
+        float polarMask(
+          vec3 direction
+        ) {
+
+          float latitude =
+            abs(
+              direction.y
+            );
+
+          return smoothstep(
+            0.66,
+            0.97,
+            latitude
+          );
         }
 
         // ======================================================
@@ -193,230 +467,183 @@ export const Uranus = ({
 
         void main() {
 
-          vec2 uv =
-            vUv;
-
-          // Extremely slow atmospheric drift
-          uv.x +=
-            uTime *
-            0.0015;
+          vec3 direction =
+            normalize(
+              vLocalDirection
+            );
 
           // ====================================================
-          // URANUS COLORS
+          // COLOR PALETTE
           // ====================================================
 
           vec3 deepCyan =
             vec3(
-              0.025,
-              0.12,
-              0.15
+              0.018,
+              0.085,
+              0.105
             );
 
           vec3 cyan =
             vec3(
-              0.10,
-              0.36,
-              0.40
+              0.075,
+              0.285,
+              0.315
             );
 
           vec3 blueCyan =
             vec3(
-              0.22,
-              0.57,
-              0.61
+              0.16,
+              0.47,
+              0.50
             );
 
           vec3 paleCyan =
             vec3(
-              0.50,
-              0.77,
-              0.79
+              0.42,
+              0.70,
+              0.72
             );
 
           vec3 icy =
             vec3(
-              0.76,
-              0.91,
-              0.90
+              0.70,
+              0.87,
+              0.87
+            );
+
+          vec3 polarColor =
+            vec3(
+              0.40,
+              0.68,
+              0.69
             );
 
           // ====================================================
-          // LARGE ATMOSPHERIC VARIATION
+          // ATMOSPHERIC STRUCTURE
           // ====================================================
 
           float largeNoise =
-            fbm(
-              vec2(
-                uv.x * 2.8,
-                uv.y * 8.0
-              )
+            largeAtmosphere(
+              direction
             );
 
           float mediumNoise =
-            fbm(
-              vec2(
-                uv.x * 8.0,
-                uv.y * 20.0
-              )
-              +
-              vec2(
-                uTime * 0.004,
-                -uTime * 0.002
-              )
+            mediumAtmosphere(
+              direction
             );
-
-          float fineNoise =
-            noise(
-              uv * 55.0
-            );
-
-          // ====================================================
-          // SUBTLE HORIZONTAL BANDS
-          // ====================================================
 
           float bands =
-            sin(
-              uv.y *
-              28.0
-            ) *
-            0.5 +
-            0.5;
-
-          bands =
-            smoothstep(
-              0.28,
-              0.72,
-              bands
+            bandPattern(
+              direction
             );
 
-          float bandVariation =
-            fbm(
-              vec2(
-                uv.x * 2.0,
-                uv.y * 18.0
-              )
+          float turbulence =
+            bandTurbulence(
+              direction
             );
-
-          bands =
-            bands *
-            0.72 +
-            bandVariation *
-            0.28;
 
           // ====================================================
-          // BASE ATMOSPHERE
+          // BASE COLOR
           // ====================================================
 
           vec3 surface =
             mix(
               deepCyan,
               cyan,
-              bands
+              bands *
+              0.78
             );
 
+          // Large smooth atmospheric variation.
           surface =
             mix(
               surface,
               blueCyan,
               smoothstep(
-                0.36,
-                0.65,
+                0.34,
+                0.67,
                 largeNoise
               ) *
-              0.62
+              0.58
             );
 
+          // Medium cloud/haze structure.
           surface =
             mix(
               surface,
               paleCyan,
               smoothstep(
-                0.55,
-                0.78,
+                0.48,
+                0.77,
                 mediumNoise
               ) *
-              0.52
+              0.44
             );
 
+          // Very subtle icy highlights.
           surface =
             mix(
               surface,
               icy,
               smoothstep(
-                0.76,
-                0.94,
-                mediumNoise
+                0.72,
+                0.92,
+                turbulence
               ) *
-              0.25
+              0.16
             );
 
           // ====================================================
-          // CLOUD DETAIL
+          // SOFT HORIZONTAL CLOUD STREAKS
           // ====================================================
 
-          float cloudStreak =
-            noise(
-              vec2(
-                uv.x * 7.0 +
-                sin(
-                  uv.y * 18.0
-                ) *
-                1.4,
+          float elongatedDetail =
+            ridgedNoise(
+              vec3(
+                direction.x *
+                9.0,
 
-                uv.y * 48.0
+                direction.y *
+                42.0,
+
+                direction.z *
+                9.0
               )
             );
 
           surface *=
-            0.90 +
-            cloudStreak *
-            0.16;
-
-          surface +=
-            (
-              fineNoise -
-              0.5
-            ) *
-            0.016;
+            0.93 +
+            elongatedDetail *
+            0.09;
 
           // ====================================================
-          // POLAR BRIGHTNESS
+          // POLAR BRIGHTENING
           // ====================================================
 
-          float latitude =
-            abs(
-              uv.y -
-              0.5
-            ) *
-            2.0;
-
-          float polarMask =
-            smoothstep(
-              0.70,
-              0.98,
-              latitude
+          float polar =
+            polarMask(
+              direction
             );
 
           surface =
             mix(
               surface,
-              paleCyan,
-              polarMask *
-              0.20
+              polarColor,
+              polar *
+              0.24
             );
 
           // ====================================================
-          // SUBTLE EQUATORIAL HAZE
+          // EQUATORIAL HAZE
           // ====================================================
 
-          float equator =
+          float equatorial =
             1.0 -
             smoothstep(
-              0.18,
-              0.48,
+              0.16,
+              0.58,
               abs(
-                uv.y -
-                0.5
+                direction.y
               )
             );
 
@@ -424,10 +651,31 @@ export const Uranus = ({
             mix(
               surface,
               surface *
-              1.05,
-              equator *
-              0.16
+              vec3(
+                1.035,
+                1.025,
+                1.020
+              ),
+              equatorial *
+              0.14
             );
+
+          // ====================================================
+          // VERY FINE SPHERICAL DETAIL
+          // ====================================================
+
+          float microDetail =
+            noise3(
+              direction *
+              82.0
+            );
+
+          surface +=
+            (
+              microDetail -
+              0.5
+            ) *
+            0.012;
 
           // ====================================================
           // SUN LIGHTING
@@ -435,7 +683,7 @@ export const Uranus = ({
 
           vec3 normal =
             normalize(
-              vNormal
+              vWorldNormal
             );
 
           vec3 uranusToSun =
@@ -459,13 +707,16 @@ export const Uranus = ({
           directLight =
             pow(
               directLight,
-              0.72
+              0.74
             );
 
-          // Smooth terminator
+          // ====================================================
+          // SOFT DAYLIGHT
+          // ====================================================
+
           float daylight =
             smoothstep(
-              -0.08,
+              -0.09,
               0.24,
               NdotL
             );
@@ -479,7 +730,7 @@ export const Uranus = ({
             dayIntensity;
 
           // ====================================================
-          // COOL SUNLIGHT TINT
+          // COOL DISTANT SUNLIGHT
           // ====================================================
 
           vec3 sunlightTint =
@@ -495,24 +746,23 @@ export const Uranus = ({
               surface *
               sunlightTint,
               daylight *
-              0.12
+              0.13
             );
 
           // ====================================================
-          // TWILIGHT / TERMINATOR
+          // TWILIGHT
           // ====================================================
 
           float twilight =
             smoothstep(
-              -0.20,
+              -0.22,
               0.08,
               NdotL
-            )
-            *
+            ) *
             (
               1.0 -
               smoothstep(
-                0.05,
+                0.04,
                 0.30,
                 NdotL
               )
@@ -520,15 +770,15 @@ export const Uranus = ({
 
           vec3 twilightColor =
             vec3(
-              0.025,
-              0.10,
-              0.12
+              0.018,
+              0.075,
+              0.085
             );
 
           surface +=
             twilightColor *
             twilight *
-            0.10;
+            0.085;
 
           // ====================================================
           // NIGHT SIDE
@@ -545,17 +795,61 @@ export const Uranus = ({
 
           surface +=
             vec3(
-              0.001,
-              0.004,
-              0.005
+              0.0008,
+              0.003,
+              0.0035
             ) *
             night;
 
-          surface =
+          // ====================================================
+          // LIMB LIGHT
+          // ====================================================
+
+          vec3 viewDirection =
+            normalize(
+              cameraPosition -
+              vWorldPosition
+            );
+
+          float viewDot =
             max(
-              surface,
+              dot(
+                normal,
+                viewDirection
+              ),
+              0.0
+            );
+
+          float limb =
+            pow(
+              1.0 -
+              viewDot,
+              4.5
+            );
+
+          surface +=
+            vec3(
+              0.045,
+              0.12,
+              0.125
+            ) *
+            limb *
+            0.06;
+
+          // ====================================================
+          // FINAL CONTRAST
+          // ====================================================
+
+          surface =
+            pow(
+              max(
+                surface,
+                vec3(
+                  0.001
+                )
+              ),
               vec3(
-                0.001
+                0.96
               )
             );
 
@@ -568,18 +862,20 @@ export const Uranus = ({
       `,
 
       toneMapped: false,
+      lights: false,
     });
   }, []);
 
   // ============================================================
-  // URANUS ATMOSPHERE GLOW
+  // URANUS ATMOSPHERE
   // ============================================================
 
   const atmosphereMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       transparent: true,
 
-      side: THREE.BackSide,
+      side:
+        THREE.BackSide,
 
       blending:
         THREE.AdditiveBlending,
@@ -595,11 +891,11 @@ export const Uranus = ({
         },
 
         intensity: {
-          value: 0.16,
+          value: 0.145,
         },
 
         power: {
-          value: 4.5,
+          value: 4.6,
         },
       },
 
@@ -646,8 +942,12 @@ export const Uranus = ({
           float viewDot =
             max(
               dot(
-                normalize(vNormal),
-                normalize(vViewDir)
+                normalize(
+                  vNormal
+                ),
+                normalize(
+                  vViewDir
+                )
               ),
               0.0
             );
@@ -674,29 +974,25 @@ export const Uranus = ({
   }, []);
 
   // ============================================================
-  // URANUS RING MATERIAL
+  // URANUS MAIN RING MATERIAL
   // ============================================================
 
-  const ringMaterial = useMemo(() => {
+  const mainRingMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       transparent: true,
 
-      side: THREE.DoubleSide,
+      side:
+        THREE.DoubleSide,
 
       depthWrite: false,
-
-      uniforms: {
-        uTime: {
-          value: 0,
-        },
-      },
 
       vertexShader: `
         varying vec2 vUv;
 
         void main() {
 
-          vUv = uv;
+          vUv =
+            uv;
 
           gl_Position =
             projectionMatrix *
@@ -711,7 +1007,9 @@ export const Uranus = ({
       fragmentShader: `
         varying vec2 vUv;
 
-        uniform float uTime;
+        // ======================================================
+        // HASH
+        // ======================================================
 
         float hash(vec2 p) {
 
@@ -729,6 +1027,10 @@ export const Uranus = ({
           );
         }
 
+        // ======================================================
+        // NOISE
+        // ======================================================
+
         float noise(vec2 p) {
 
           vec2 i =
@@ -736,6 +1038,15 @@ export const Uranus = ({
 
           vec2 f =
             fract(p);
+
+          f =
+            f *
+            f *
+            (
+              3.0 -
+              2.0 *
+              f
+            );
 
           float a =
             hash(i);
@@ -767,107 +1078,139 @@ export const Uranus = ({
               )
             );
 
-          vec2 u =
-            f *
-            f *
-            (
-              3.0 -
-              2.0 *
-              f
-            );
-
           return mix(
-            a,
-            b,
-            u.x
-          )
-          +
-          (
-            c -
-            a
-          ) *
-          u.y *
-          (
-            1.0 -
-            u.x
-          )
-          +
-          (
-            d -
-            b
-          ) *
-          u.x *
-          u.y;
+            mix(
+              a,
+              b,
+              f.x
+            ),
+            mix(
+              c,
+              d,
+              f.x
+            ),
+            f.y
+          );
         }
+
+        // ======================================================
+        // MAIN RING
+        // ======================================================
 
         void main() {
 
-          vec2 uv =
-            vUv;
+          vec2 centered =
+            vUv -
+            vec2(
+              0.5
+            );
 
           float radial =
             length(
-              uv -
-              vec2(
-                0.5
-              )
+              centered
             );
 
-          // Fine ring structure
-          float ringPattern =
+          // ====================================================
+          // RING BAND STRUCTURE
+          // ====================================================
+
+          float fineBands =
             sin(
               radial *
-              235.0
+              310.0
             ) *
             0.5 +
             0.5;
 
-          float secondaryPattern =
+          float mediumBands =
             sin(
               radial *
-              88.0
+              135.0 +
+              sin(
+                radial *
+                21.0
+              ) *
+              2.0
             ) *
             0.5 +
             0.5;
 
-          float ringNoise =
+          float broadBands =
+            sin(
+              radial *
+              48.0
+            ) *
+            0.5 +
+            0.5;
+
+          float density =
             noise(
               vec2(
                 radial *
-                95.0,
+                125.0,
 
-                uv.y *
-                12.0
+                vUv.y *
+                15.0
+              )
+            );
+
+          float fineDensity =
+            noise(
+              vec2(
+                radial *
+                250.0,
+
+                vUv.y *
+                26.0
               )
             );
 
           float brightness =
-            ringPattern *
-            0.34 +
-            secondaryPattern *
-            0.18 +
-            ringNoise *
-            0.48;
+            fineBands *
+            0.30 +
+
+            mediumBands *
+            0.23 +
+
+            broadBands *
+            0.13 +
+
+            density *
+            0.25 +
+
+            fineDensity *
+            0.09;
+
+          // ====================================================
+          // RING COLORS
+          // ====================================================
 
           vec3 darkRing =
             vec3(
-              0.075,
-              0.15,
-              0.15
+              0.065,
+              0.13,
+              0.135
             );
 
           vec3 midRing =
             vec3(
-              0.30,
-              0.43,
-              0.42
+              0.27,
+              0.40,
+              0.40
             );
 
           vec3 brightRing =
             vec3(
-              0.58,
-              0.69,
-              0.66
+              0.55,
+              0.68,
+              0.67
+            );
+
+          vec3 icyRing =
+            vec3(
+              0.72,
+              0.82,
+              0.80
             );
 
           vec3 ringColor =
@@ -875,8 +1218,8 @@ export const Uranus = ({
               darkRing,
               midRing,
               smoothstep(
-                0.18,
-                0.56,
+                0.15,
+                0.52,
                 brightness
               )
             );
@@ -886,24 +1229,40 @@ export const Uranus = ({
               ringColor,
               brightRing,
               smoothstep(
-                0.62,
-                0.90,
+                0.50,
+                0.78,
                 brightness
               ) *
-              0.65
+              0.66
             );
+
+          ringColor =
+            mix(
+              ringColor,
+              icyRing,
+              smoothstep(
+                0.74,
+                0.93,
+                brightness
+              ) *
+              0.28
+            );
+
+          // ====================================================
+          // INNER / OUTER FADE
+          // ====================================================
 
           float innerFade =
             smoothstep(
               0.015,
-              0.065,
+              0.060,
               radial
             );
 
           float outerFade =
             1.0 -
             smoothstep(
-              0.42,
+              0.41,
               0.50,
               radial
             );
@@ -912,11 +1271,55 @@ export const Uranus = ({
             innerFade *
             outerFade;
 
+          // ====================================================
+          // SUBTLE RING DIVISIONS
+          // ====================================================
+
+          float divisionOne =
+            smoothstep(
+              0.205,
+              0.216,
+              radial
+            ) *
+            (
+              1.0 -
+              smoothstep(
+                0.216,
+                0.228,
+                radial
+              )
+            );
+
+          float divisionTwo =
+            smoothstep(
+              0.315,
+              0.324,
+              radial
+            ) *
+            (
+              1.0 -
+              smoothstep(
+                0.324,
+                0.337,
+                radial
+              )
+            );
+
+          alpha *=
+            1.0 -
+            divisionOne *
+            0.52;
+
+          alpha *=
+            1.0 -
+            divisionTwo *
+            0.34;
+
           gl_FragColor =
             vec4(
               ringColor,
               alpha *
-              0.48
+              0.54
             );
         }
       `,
@@ -924,55 +1327,64 @@ export const Uranus = ({
   }, []);
 
   // ============================================================
-  // ANIMATION
+  // OUTER RING
   // ============================================================
 
-  useFrame(
-    ({ clock }, delta) => {
+  const outerRingMaterial = useMemo(() => {
+    return new THREE.MeshBasicMaterial({
+      color:
+        "#819b9a",
 
-      const time =
-        clock.getElapsedTime();
+      transparent: true,
 
-      // Uranus retrograde rotation
-      if (uranusRef.current) {
+      opacity: 0.19,
 
-        uranusRef.current.rotation.y +=
-          delta *
-          rotationSpeed;
-      }
+      side:
+        THREE.DoubleSide,
 
-      // Very subtle ring motion
-      if (ringGroupRef.current) {
+      depthWrite: false,
+    });
+  }, []);
 
-        ringGroupRef.current.rotation.z +=
-          delta *
-          rotationSpeed *
-          0.08;
-      }
+  // ============================================================
+  // MIDDLE RING
+  // ============================================================
 
-      // Atmosphere pulse
-      if (atmosphereRef.current) {
+  const middleRingMaterial = useMemo(() => {
+    return new THREE.MeshBasicMaterial({
+      color:
+        "#718f8d",
 
-        const pulse =
-          1 +
-          Math.sin(
-            time *
-            0.5
-          ) *
-          0.0012;
+      transparent: true,
 
-        atmosphereRef.current.scale.setScalar(
-          pulse
-        );
-      }
+      opacity: 0.26,
 
-      uranusMaterial.uniforms.uTime.value =
-        time;
+      side:
+        THREE.DoubleSide,
 
-      ringMaterial.uniforms.uTime.value =
-        time;
-    }
-  );
+      depthWrite: false,
+    });
+  }, []);
+
+  // ============================================================
+  // INNER RING
+  // ============================================================
+
+  const innerRingMaterial = useMemo(() => {
+    return new THREE.MeshBasicMaterial({
+      color:
+        "#526f6d",
+
+      transparent: true,
+
+      opacity: 0.30,
+
+      side:
+        THREE.DoubleSide,
+
+      depthWrite: false,
+    });
+  }, []);
 
   // ============================================================
   // RENDER
@@ -981,14 +1393,15 @@ export const Uranus = ({
   return (
     <group>
 
-      {/* Uranus Body */}
+      {/* ======================================================
+          URANUS BODY
+          ====================================================== */}
 
       <Sphere
-        ref={uranusRef}
         args={[
           1,
-          64,
-          64,
+          72,
+          72,
         ]}
         castShadow
         receiveShadow
@@ -1001,10 +1414,11 @@ export const Uranus = ({
         />
       </Sphere>
 
-      {/* Uranus Atmosphere */}
+      {/* ======================================================
+          URANUS ATMOSPHERE
+          ====================================================== */}
 
       <Sphere
-        ref={atmosphereRef}
         args={[
           1.028,
           64,
@@ -1019,24 +1433,21 @@ export const Uranus = ({
         />
       </Sphere>
 
-      {/* Uranus Rings */}
+      {/* ======================================================
+          URANUS RINGS
+          ====================================================== */}
 
-      <group
-        ref={ringGroupRef}
-        rotation={[
-          THREE.MathUtils.degToRad(98),
-          0,
-          0,
-        ]}
-      >
+      <group>
 
-        {/* Main Ring */}
+        {/* ====================================================
+            INNER RING
+            ==================================================== */}
 
         <Ring
           args={[
+            1.18,
             1.30,
-            1.48,
-            128,
+            160,
           ]}
           rotation={[
             Math.PI / 2,
@@ -1046,19 +1457,21 @@ export const Uranus = ({
         >
           <primitive
             object={
-              ringMaterial
+              innerRingMaterial
             }
             attach="material"
           />
         </Ring>
 
-        {/* Middle Ring */}
+        {/* ====================================================
+            MAIN DETAILED RING
+            ==================================================== */}
 
         <Ring
           args={[
-            1.55,
-            1.68,
-            128,
+            1.30,
+            1.49,
+            160,
           ]}
           rotation={[
             Math.PI / 2,
@@ -1066,22 +1479,23 @@ export const Uranus = ({
             0,
           ]}
         >
-          <meshBasicMaterial
-            color="#718f8d"
-            transparent
-            opacity={0.27}
-            side={THREE.DoubleSide}
-            depthWrite={false}
+          <primitive
+            object={
+              mainRingMaterial
+            }
+            attach="material"
           />
         </Ring>
 
-        {/* Outer Faint Ring */}
+        {/* ====================================================
+            MIDDLE RING
+            ==================================================== */}
 
         <Ring
           args={[
-            1.75,
-            1.82,
-            128,
+            1.53,
+            1.67,
+            160,
           ]}
           rotation={[
             Math.PI / 2,
@@ -1089,12 +1503,35 @@ export const Uranus = ({
             0,
           ]}
         >
-          <meshBasicMaterial
-            color="#9bb0ac"
-            transparent
-            opacity={0.16}
-            side={THREE.DoubleSide}
-            depthWrite={false}
+          <primitive
+            object={
+              middleRingMaterial
+            }
+            attach="material"
+          />
+        </Ring>
+
+        {/* ====================================================
+            OUTER FAINT RING
+            ==================================================== */}
+
+        <Ring
+          args={[
+            1.74,
+            1.84,
+            160,
+          ]}
+          rotation={[
+            Math.PI / 2,
+            0,
+            0,
+          ]}
+        >
+          <primitive
+            object={
+              outerRingMaterial
+            }
+            attach="material"
           />
         </Ring>
 

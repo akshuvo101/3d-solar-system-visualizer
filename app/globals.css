@@ -27,30 +27,29 @@ body {
 
 .cinematic-slide {
   animation: cinematicEnter 8s ease-in-out both;
+  will-change: transform, opacity;
 }
 
 @keyframes cinematicEnter {
   0% {
     opacity: 0;
     transform: translateY(18px);
-    filter: blur(7px);
   }
 
-  12% {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
-  }
-
+  12%,
   82% {
     opacity: 1;
     transform: translateY(0);
-    filter: blur(0);
   }
 
   100% {
     opacity: 0;
     transform: translateY(-12px);
-    filter: blur(5px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cinematic-slide {
+    animation: none;
   }
 }

@@ -232,7 +232,10 @@ export default function SimulationPage() {
   };
 
   return (
-    <div className="relative h-screen w-full overflow-hidden bg-black">
+    <main
+      className="relative h-screen w-full overflow-hidden bg-black"
+      aria-label="Solar system simulation"
+    >
       {/* ================================================== */}
       {/* Sidebar */}
       {/* ================================================== */}
@@ -273,7 +276,7 @@ export default function SimulationPage() {
             onClick={() =>
               setMusicOn((prev) => !prev)
             }
-            className={`flex items-center gap-1.5 text-left transition-all duration-300 ${musicOn
+            className={`flex min-h-10 items-center gap-1.5 text-left transition-all duration-300 ${musicOn
                 ? "text-white hover:text-white/80"
                 : "text-white/60 hover:text-white/80"
               }`}
@@ -346,7 +349,7 @@ export default function SimulationPage() {
               )
             }
             disabled={!musicOn}
-            className={`text-left transition-all duration-300 ${musicOn
+            className={`min-h-10 text-left transition-all duration-300 ${musicOn
                 ? descriptionAudioOn
                   ? "text-pink-100 hover:text-pink-50"
                   : "text-white/60 hover:text-white/80"
@@ -450,6 +453,6 @@ export default function SimulationPage() {
           ))}
         </div>
       </div>
-    </div>
+    </main>
   );
 }

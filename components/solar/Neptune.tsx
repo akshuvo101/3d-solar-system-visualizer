@@ -1,45 +1,45 @@
 import { Ring, Sphere } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useMemo } from "react";
 import * as THREE from "three";
 
-type NeptuneProps = {
-  rotationSpeed?: number;
-};
+/**
+ * ============================================================
+ * 🔵 NEPTUNE
+ * ============================================================
+ *
+ * Visual model:
+ * - Spherical 3D procedural atmospheric noise
+ * - No UV-based surface noise
+ * - No internal axial rotation
+ * - No artificial atmosphere pulse
+ * - Planet.tsx remains the single source of truth for rotation
+ *
+ * This avoids UV seam / column-like artifacts while keeping
+ * Neptune's characteristic deep blue atmospheric appearance.
+ */
 
-export const Neptune = ({
-  rotationSpeed = 0.085,
-}: NeptuneProps) => {
-  const neptuneRef = useRef<THREE.Mesh>(null);
-  const atmosphereRef = useRef<THREE.Mesh>(null);
-  const ringGroupRef = useRef<THREE.Group>(null);
-
-  /*
-   * ============================================================
-   * 🔵 NEPTUNE PROCEDURAL SURFACE
-   * ============================================================
-   */
+export const Neptune = () => {
+  /* ============================================================
+     🔵 NEPTUNE ATMOSPHERIC MATERIAL
+     ============================================================ */
 
   const neptuneMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
-        uTime: {
-          value: 0,
-        },
-
         uSunPosition: {
           value: new THREE.Vector3(0, 0, 0),
         },
       },
 
       vertexShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
+        varying vec3 vLocalDirection;
+        varying vec3 vWorldNormal;
         varying vec3 vWorldPosition;
 
         void main() {
 
-          vUv = uv;
+          vLocalDirection =
+            normalize(position);
 
           vec4 worldPosition =
             modelMatrix *
@@ -48,7 +48,7 @@ export const Neptune = ({
           vWorldPosition =
             worldPosition.xyz;
 
-          vNormal =
+          vWorldNormal =
             normalize(
               mat3(modelMatrix) *
               normal
@@ -65,243 +65,626 @@ export const Neptune = ({
       `,
 
       fragmentShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
+        varying vec3 vLocalDirection;
+        varying vec3 vWorldNormal;
         varying vec3 vWorldPosition;
 
-        uniform float uTime;
         uniform vec3 uSunPosition;
 
-        // ======================================================
-        // HASH
-        // ======================================================
+        /* ======================================================
+           HASH
+           ====================================================== */
 
-        float hash(vec2 p) {
+        float hash31(vec3 p) {
+
+          p = fract(
+            p * 0.1031
+          );
+
+          p +=
+            dot(
+              p,
+              p.yzx + 33.33
+            );
 
           return fract(
-            sin(
-              dot(
-                p,
-                vec2(
-                  127.1,
-                  311.7
-                )
-              )
-            ) *
-            43758.5453123
+            (p.x + p.y) * p.z
           );
         }
 
-        // ======================================================
-        // NOISE
-        // ======================================================
+        /* ======================================================
+           3D VALUE NOISE
+           ====================================================== */
 
-        float noise(vec2 p) {
+        float noise3(vec3 p) {
 
-          vec2 i = floor(p);
-          vec2 f = fract(p);
+          vec3 i =
+            floor(p);
 
-          float a = hash(i);
+          vec3 f =
+            fract(p);
 
-          float b =
-            hash(
+          f =
+            f * f *
+            (3.0 - 2.0 * f);
+
+          float n000 =
+            hash31(
               i +
-              vec2(
+              vec3(
+                0.0,
+                0.0,
+                0.0
+              )
+            );
+
+          float n100 =
+            hash31(
+              i +
+              vec3(
+                1.0,
+                0.0,
+                0.0
+              )
+            );
+
+          float n010 =
+            hash31(
+              i +
+              vec3(
+                0.0,
                 1.0,
                 0.0
               )
             );
 
-          float c =
-            hash(
+          float n110 =
+            hash31(
               i +
-              vec2(
+              vec3(
+                1.0,
+                1.0,
+                0.0
+              )
+            );
+
+          float n001 =
+            hash31(
+              i +
+              vec3(
+                0.0,
                 0.0,
                 1.0
               )
             );
 
-          float d =
-            hash(
+          float n101 =
+            hash31(
               i +
-              vec2(
+              vec3(
+                1.0,
+                0.0,
+                1.0
+              )
+            );
+
+          float n011 =
+            hash31(
+              i +
+              vec3(
+                0.0,
                 1.0,
                 1.0
               )
             );
 
-          vec2 u =
-            f *
-            f *
-            (3.0 - 2.0 * f);
+          float n111 =
+            hash31(
+              i +
+              vec3(
+                1.0,
+                1.0,
+                1.0
+              )
+            );
 
-          return mix(a, b, u.x)
-            +
-            (c - a) *
-            u.y *
-            (1.0 - u.x)
-            +
-            (d - b) *
-            u.x *
-            u.y;
+          float nx00 =
+            mix(
+              n000,
+              n100,
+              f.x
+            );
+
+          float nx10 =
+            mix(
+              n010,
+              n110,
+              f.x
+            );
+
+          float nx01 =
+            mix(
+              n001,
+              n101,
+              f.x
+            );
+
+          float nx11 =
+            mix(
+              n011,
+              n111,
+              f.x
+            );
+
+          float nxy0 =
+            mix(
+              nx00,
+              nx10,
+              f.y
+            );
+
+          float nxy1 =
+            mix(
+              nx01,
+              nx11,
+              f.y
+            );
+
+          return mix(
+            nxy0,
+            nxy1,
+            f.z
+          );
         }
 
-        // ======================================================
-        // FBM
-        // ======================================================
+        /* ======================================================
+           FBM
+           ====================================================== */
 
-        float fbm(vec2 p) {
+        float fbm3(
+          vec3 p,
+          int octaves
+        ) {
 
           float value = 0.0;
-          float amplitude = 0.5;
 
-          for(int i = 0; i < 6; i++) {
+          float amplitude =
+            0.5;
+
+          float normalization =
+            0.0;
+
+          for (
+            int i = 0;
+            i < 6;
+            i++
+          ) {
+
+            if (i >= octaves) {
+              break;
+            }
 
             value +=
-              noise(p) *
+              noise3(p) *
               amplitude;
 
-            p *= 2.0;
-            amplitude *= 0.5;
+            normalization +=
+              amplitude;
+
+            p *=
+              2.02;
+
+            amplitude *=
+              0.5;
           }
 
-          return value;
+          return value /
+            max(
+              normalization,
+              0.0001
+            );
         }
 
-        // ======================================================
-        // MAIN
-        // ======================================================
+        /* ======================================================
+           RIDGED ATMOSPHERIC STRUCTURE
+           ====================================================== */
 
-        void main() {
+        float ridgedNoise(
+          vec3 p
+        ) {
 
-          vec2 uv = vUv;
+          float n =
+            fbm3(
+              p,
+              4
+            );
 
-          // Neptune's atmosphere flows east-west
-          uv.x +=
-            uTime *
-            0.0035;
+          return
+            1.0 -
+            abs(
+              n * 2.0 -
+              1.0
+            );
+        }
 
-          // ====================================================
-          // 🔵 NEPTUNE COLOR PALETTE
-          // ====================================================
+        /* ======================================================
+           LARGE SCALE ATMOSPHERE
+           ====================================================== */
 
-          vec3 abyssBlue =
+        float largeAtmosphere(
+          vec3 direction
+        ) {
+
+          vec3 p =
+            direction *
+            2.8;
+
+          p +=
             vec3(
-              0.004,
-              0.018,
-              0.075
+              1.7,
+              -2.4,
+              3.1
             );
 
-          vec3 deepBlue =
+          return fbm3(
+            p,
+            5
+          );
+        }
+
+        /* ======================================================
+           MEDIUM ATMOSPHERIC TURBULENCE
+           ====================================================== */
+
+        float mediumAtmosphere(
+          vec3 direction
+        ) {
+
+          vec3 p =
+            direction *
+            7.5;
+
+          p +=
             vec3(
-              0.008,
-              0.040,
-              0.17
+              -2.1,
+              4.8,
+              1.6
             );
 
-          vec3 oceanBlue =
+          return fbm3(
+            p,
+            4
+          );
+        }
+
+        /* ======================================================
+           FINE CLOUD STRUCTURE
+           ====================================================== */
+
+        float fineClouds(
+          vec3 direction
+        ) {
+
+          vec3 p =
+            direction *
+            18.0;
+
+          p +=
             vec3(
-              0.012,
-              0.105,
-              0.36
+              5.2,
+              -3.7,
+              2.4
             );
 
-          vec3 royalBlue =
-            vec3(
-              0.025,
-              0.19,
-              0.58
-            );
+          return fbm3(
+            p,
+            3
+          );
+        }
 
-          vec3 electricBlue =
-            vec3(
-              0.08,
-              0.34,
-              0.76
-            );
+        /* ======================================================
+           HORIZONTAL ATMOSPHERIC BANDS
+           ====================================================== */
 
-          vec3 icyBlue =
-            vec3(
-              0.38,
-              0.65,
-              0.90
-            );
+        float bandPattern(
+          vec3 direction
+        ) {
 
-          // ====================================================
-          // 🌊 LARGE-SCALE FLOW
-          // ====================================================
+          float latitude =
+            direction.y;
 
-          float largeFlow =
-            fbm(
-              vec2(
-                uv.x * 2.8,
-                uv.y * 6.5
-              )
-            );
-
-          // ====================================================
-          // 🌫️ MEDIUM TURBULENCE
-          // ====================================================
-
-          float mediumFlow =
-            fbm(
-              vec2(
-                uv.x * 8.0,
-                uv.y * 20.0
-              )
-              +
-              vec2(
-                uTime * 0.008,
-                -uTime * 0.003
-              )
-            );
-
-          // ====================================================
-          // 🔹 FINE DETAIL
-          // ====================================================
-
-          float fineDetail =
-            fbm(
-              uv * 48.0
-            );
-
-          // ====================================================
-          // 🌀 HORIZONTAL ATMOSPHERIC BANDS
-          // ====================================================
-
-          float bandWave =
+          float broadBands =
             sin(
-              uv.y *
-              38.0
+              latitude *
+              30.0
             ) *
             0.5 +
             0.5;
 
-          float bandDistortion =
-            noise(
-              vec2(
-                uv.x * 6.0,
-                uv.y * 15.0
+          float secondaryBands =
+            sin(
+              latitude *
+              66.0 +
+              0.7
+            ) *
+            0.5 +
+            0.5;
+
+          float bandNoise =
+            fbm3(
+              direction *
+              9.0,
+              3
+            );
+
+          return
+            broadBands *
+            0.58 +
+            secondaryBands *
+            0.18 +
+            bandNoise *
+            0.24;
+        }
+
+        /* ======================================================
+           BAND TURBULENCE
+           ====================================================== */
+
+        float bandTurbulence(
+          vec3 direction
+        ) {
+
+          vec3 p =
+            direction *
+            vec3(
+              5.0,
+              24.0,
+              5.0
+            );
+
+          float base =
+            noise3(p);
+
+          float detail =
+            noise3(
+              p *
+              1.9 +
+              vec3(
+                2.7,
+                1.3,
+                -1.8
               )
             );
 
-          float bands =
-            bandWave *
+          return
+            base *
             0.62 +
-            bandDistortion *
+            detail *
             0.38;
+        }
 
-          // Slightly soften the bands
+        /* ======================================================
+           POLAR STRUCTURE
+           ====================================================== */
+
+        float polarMask(
+          vec3 direction
+        ) {
+
+          float latitude =
+            abs(
+              direction.y
+            );
+
+          return smoothstep(
+            0.70,
+            0.98,
+            latitude
+          );
+        }
+
+        /* ======================================================
+           DARK STORM SYSTEMS
+           ====================================================== */
+
+        float stormField(
+          vec3 direction
+        ) {
+
+          float large =
+            fbm3(
+              direction *
+              3.7 +
+              vec3(
+                2.4,
+                -1.7,
+                4.2
+              ),
+              4
+            );
+
+          float medium =
+            ridgedNoise(
+              direction *
+              9.0 +
+              vec3(
+                -3.1,
+                2.6,
+                1.8
+              )
+            );
+
+          float storm =
+            smoothstep(
+              0.68,
+              0.88,
+              large
+            );
+
+          storm *=
+            smoothstep(
+              0.42,
+              0.78,
+              medium
+            );
+
+          return storm;
+        }
+
+        /* ======================================================
+           HIGH-ALTITUDE BRIGHT CLOUDS
+           ====================================================== */
+
+        float highCloudField(
+          vec3 direction
+        ) {
+
+          float large =
+            fbm3(
+              direction *
+              8.0 +
+              vec3(
+                3.4,
+                -2.8,
+                1.1
+              ),
+              4
+            );
+
+          float fine =
+            fbm3(
+              direction *
+              20.0 +
+              vec3(
+                -1.7,
+                4.2,
+                2.8
+              ),
+              3
+            );
+
+          float clouds =
+            large *
+            0.72 +
+            fine *
+            0.28;
+
+          return smoothstep(
+            0.64,
+            0.84,
+            clouds
+          );
+        }
+
+        void main() {
+
+          vec3 direction =
+            normalize(
+              vLocalDirection
+            );
+
+          /* ==================================================
+             🔵 NEPTUNE PALETTE
+             ================================================== */
+
+          vec3 abyssBlue =
+            vec3(
+              0.003,
+              0.012,
+              0.050
+            );
+
+          vec3 deepBlue =
+            vec3(
+              0.006,
+              0.030,
+              0.125
+            );
+
+          vec3 oceanBlue =
+            vec3(
+              0.010,
+              0.082,
+              0.300
+            );
+
+          vec3 royalBlue =
+            vec3(
+              0.020,
+              0.155,
+              0.500
+            );
+
+          vec3 electricBlue =
+            vec3(
+              0.055,
+              0.285,
+              0.700
+            );
+
+          vec3 icyBlue =
+            vec3(
+              0.30,
+              0.56,
+              0.86
+            );
+
+          vec3 cloudBlue =
+            vec3(
+              0.18,
+              0.40,
+              0.72
+            );
+
+          /* ==================================================
+             🌊 LARGE ATMOSPHERIC FLOW
+             ================================================== */
+
+          float largeFlow =
+            largeAtmosphere(
+              direction
+            );
+
+          /* ==================================================
+             🌫️ MEDIUM TURBULENCE
+             ================================================== */
+
+          float mediumFlow =
+            mediumAtmosphere(
+              direction
+            );
+
+          /* ==================================================
+             🌀 ATMOSPHERIC BANDS
+             ================================================== */
+
+          float bands =
+            bandPattern(
+              direction
+            );
+
+          float turbulence =
+            bandTurbulence(
+              direction
+            );
+
+          bands =
+            mix(
+              bands,
+              turbulence,
+              0.34
+            );
+
           bands =
             smoothstep(
-              0.18,
-              0.82,
+              0.16,
+              0.86,
               bands
             );
 
-          // ====================================================
-          // 🎨 BASE ATMOSPHERIC COLOR
-          // ====================================================
+          /* ==================================================
+             🎨 BASE COLOR
+             ================================================== */
 
           vec3 surface =
             mix(
@@ -316,10 +699,10 @@ export const Neptune = ({
               royalBlue,
               smoothstep(
                 0.30,
-                0.72,
+                0.76,
                 largeFlow
               ) *
-              0.72
+              0.62
             );
 
           surface =
@@ -331,56 +714,164 @@ export const Neptune = ({
                 0.86,
                 mediumFlow
               ) *
-              0.38
+              0.30
             );
 
-          // ====================================================
-          // ☁️ HIGH-ALTITUDE CLOUD STRUCTURES
-          // ====================================================
+          /* ==================================================
+             ☁️ HIGH ALTITUDE CLOUDS
+             ================================================== */
 
-          float cloudNoise =
-            fbm(
-              vec2(
-                uv.x * 14.0,
-                uv.y * 24.0
-              )
-              +
-              vec2(
-                -uTime * 0.012,
-                uTime * 0.002
-              )
-            );
-
-          float cloudMask =
-            smoothstep(
-              0.69,
-              0.86,
-              cloudNoise
+          float highClouds =
+            highCloudField(
+              direction
             );
 
           surface =
             mix(
               surface,
-              icyBlue,
-              cloudMask *
-              0.34
+              cloudBlue,
+              highClouds *
+              0.30
             );
 
-          // ====================================================
-          // 💨 FINE METHANE-ICE STREAKS
-          // ====================================================
+          /* ==================================================
+             💨 FINE CLOUD STRUCTURE
+             ================================================== */
+
+          float fine =
+            fineClouds(
+              direction
+            );
+
+          surface +=
+            (
+              fine -
+              0.5
+            ) *
+            0.026;
+
+          /* ==================================================
+             🌪️ DARK STORM SYSTEMS
+             ================================================== */
+
+          float storm =
+            stormField(
+              direction
+            );
+
+          vec3 stormBlue =
+            vec3(
+              0.002,
+              0.009,
+              0.038
+            );
+
+          surface =
+            mix(
+              surface,
+              stormBlue,
+              storm *
+              0.48
+            );
+
+          /* ==================================================
+             🌀 STORM EDGE TURBULENCE
+             ================================================== */
+
+          float stormEdge =
+            ridgedNoise(
+              direction *
+              15.0 +
+              vec3(
+                4.0,
+                -2.0,
+                3.0
+              )
+            );
+
+          surface =
+            mix(
+              surface,
+              vec3(
+                0.08,
+                0.25,
+                0.60
+              ),
+              storm *
+              smoothstep(
+                0.48,
+                0.78,
+                stormEdge
+              ) *
+              0.16
+            );
+
+          /* ==================================================
+             🧊 POLAR REGIONS
+             ================================================== */
+
+          float polar =
+            polarMask(
+              direction
+            );
+
+          surface =
+            mix(
+              surface,
+              vec3(
+                0.09,
+                0.25,
+                0.56
+              ),
+              polar *
+              0.18
+            );
+
+          /* ==================================================
+             🌊 EQUATORIAL HAZE
+             ================================================== */
+
+          float equatorial =
+            1.0 -
+            smoothstep(
+              0.05,
+              0.34,
+              abs(
+                direction.y
+              )
+            );
+
+          surface =
+            mix(
+              surface,
+              vec3(
+                0.018,
+                0.12,
+                0.38
+              ),
+              equatorial *
+              0.12
+            );
+
+          /* ==================================================
+             ✨ SUBTLE METHANE-ICE STREAKS
+             ================================================== */
 
           float streakNoise =
-            noise(
-              vec2(
-                uv.x * 28.0,
-                uv.y * 6.0
-              )
+            fbm3(
+              direction *
+              28.0 +
+              vec3(
+                -2.4,
+                3.8,
+                1.7
+              ),
+              3
             );
 
           float streaks =
             smoothstep(
-              0.66,
+              0.68,
               0.88,
               streakNoise
             );
@@ -388,167 +879,14 @@ export const Neptune = ({
           surface =
             mix(
               surface,
-              vec3(
-                0.32,
-                0.56,
-                0.84
-              ),
+              icyBlue,
               streaks *
-              0.18
+              0.13
             );
 
-          // ====================================================
-          // 🌪️ DARK STORM SYSTEMS
-          // ====================================================
-
-          float stormField =
-            fbm(
-              vec2(
-                uv.x * 3.4,
-                uv.y * 5.5
-              )
-              +
-              vec2(
-                1.8,
-                3.7
-              )
-            );
-
-          float storm =
-            smoothstep(
-              0.70,
-              0.84,
-              stormField
-            );
-
-          float stormDetail =
-            noise(
-              uv * 10.0 +
-              vec2(
-                3.0,
-                1.7
-              )
-            );
-
-          storm *=
-            smoothstep(
-              0.38,
-              0.68,
-              stormDetail
-            );
-
-          surface =
-            mix(
-              surface,
-              vec3(
-                0.003,
-                0.012,
-                0.055
-              ),
-              storm *
-              0.42
-            );
-
-          // ====================================================
-          // 🌀 SUBTLE STORM EYE / TURBULENCE
-          // ====================================================
-
-          float vortex =
-            fbm(
-              vec2(
-                uv.x * 9.0 +
-                sin(uv.y * 8.0),
-                uv.y * 9.0
-              )
-            );
-
-          float vortexMask =
-            smoothstep(
-              0.72,
-              0.88,
-              vortex
-            );
-
-          surface =
-            mix(
-              surface,
-              vec3(
-                0.16,
-                0.38,
-                0.70
-              ),
-              vortexMask *
-              0.15
-            );
-
-          // ====================================================
-          // 🧊 POLAR REGIONS
-          // ====================================================
-
-          float latitude =
-            abs(
-              uv.y -
-              0.5
-            ) *
-            2.0;
-
-          float polar =
-            smoothstep(
-              0.76,
-              0.98,
-              latitude
-            );
-
-          surface =
-            mix(
-              surface,
-              vec3(
-                0.12,
-                0.31,
-                0.62
-              ),
-              polar *
-              0.20
-            );
-
-          // ====================================================
-          // 🌫️ EQUATORIAL HAZE
-          // ====================================================
-
-          float equatorial =
-            1.0 -
-            smoothstep(
-              0.08,
-              0.36,
-              abs(
-                uv.y -
-                0.5
-              )
-            );
-
-          surface =
-            mix(
-              surface,
-              vec3(
-                0.025,
-                0.16,
-                0.48
-              ),
-              equatorial *
-              0.12
-            );
-
-          // ====================================================
-          // 🔹 MICRO DETAIL
-          // ====================================================
-
-          surface +=
-            (fineDetail - 0.5) *
-            0.022;
-
-          // ====================================================
-          // ☀️ REAL SUN LIGHTING
-          // ====================================================
+          /* ==================================================
+             ☀️ SUN LIGHTING
+             ================================================== */
 
           vec3 neptuneToSun =
             normalize(
@@ -556,9 +894,14 @@ export const Neptune = ({
               vWorldPosition
             );
 
+          vec3 normal =
+            normalize(
+              vWorldNormal
+            );
+
           float NdotL =
             dot(
-              normalize(vNormal),
+              normal,
               neptuneToSun
             );
 
@@ -568,75 +911,73 @@ export const Neptune = ({
               0.0
             );
 
-          // Strong but smooth terminator
+          /* ==================================================
+             🌅 SOFT DAYLIGHT
+             ================================================== */
+
           float day =
             smoothstep(
-              0.015,
-              0.42,
+              0.012,
+              0.44,
               diffuse
             );
 
-          // ====================================================
-          // 🌅 TWILIGHT
-          // ====================================================
+          /* ==================================================
+             🌅 TWILIGHT
+             ================================================== */
 
           float twilight =
             smoothstep(
               0.0,
-              0.22,
+              0.20,
               diffuse
-            )
-            *
+            ) *
             (
               1.0 -
               smoothstep(
-                0.22,
-                0.48,
+                0.20,
+                0.46,
                 diffuse
               )
             );
 
-          // ====================================================
-          // ☀️ SUN-FACING BLUE HIGHLIGHT
-          // ====================================================
+          surface +=
+            vec3(
+              0.014,
+              0.045,
+              0.13
+            ) *
+            twilight;
+
+          /* ==================================================
+             ☀️ SUN-FACING HIGHLIGHT
+             ================================================== */
 
           surface =
             mix(
               surface,
               surface *
               vec3(
-                1.06,
-                1.08,
+                1.05,
+                1.07,
                 1.12
               ),
               day *
-              0.22
+              0.20
             );
 
-          // ====================================================
-          // 🌅 TERMINATOR BLUE
-          // ====================================================
-
-          surface +=
-            vec3(
-              0.018,
-              0.055,
-              0.15
-            ) *
-            twilight;
-
-          // ====================================================
-          // 🌗 DAY / NIGHT BALANCE
-          // ====================================================
+          /* ==================================================
+             🌗 DAY / NIGHT BALANCE
+             ================================================== */
 
           surface *=
-            0.28 +
+            0.30 +
             day *
-            0.72;
+            0.70;
 
-          // ====================================================
-          // 🌑 DEEP NIGHT SIDE
-          // ====================================================
+          /* ==================================================
+             🌑 NIGHT SIDE
+             ================================================== */
 
           float night =
             1.0 -
@@ -645,19 +986,57 @@ export const Neptune = ({
           surface *=
             1.0 -
             night *
-            0.12;
+            0.16;
 
           surface +=
             vec3(
-              0.002,
-              0.007,
-              0.028
+              0.0015,
+              0.005,
+              0.020
             ) *
             night;
 
-          // ====================================================
-          // ✨ FINAL CONTRAST
-          // ====================================================
+          /* ==================================================
+             🌌 LIMB LIGHT
+             ================================================== */
+
+          float viewDistance =
+            length(
+              cameraPosition -
+              vWorldPosition
+            );
+
+          vec3 viewDirection =
+            normalize(
+              cameraPosition -
+              vWorldPosition
+            );
+
+          float rim =
+            pow(
+              1.0 -
+              max(
+                dot(
+                  normal,
+                  viewDirection
+                ),
+                0.0
+              ),
+              4.2
+            );
+
+          surface +=
+            vec3(
+              0.018,
+              0.055,
+              0.15
+            ) *
+            rim *
+            0.32;
+
+          /* ==================================================
+             ✨ FINAL CONTRAST
+             ================================================== */
 
           surface =
             max(
@@ -665,7 +1044,7 @@ export const Neptune = ({
               vec3(
                 0.002,
                 0.006,
-                0.025
+                0.024
               )
             );
 
@@ -681,11 +1060,9 @@ export const Neptune = ({
     });
   }, []);
 
-  /*
-   * ============================================================
-   * ✨ SUBTLE NEPTUNE ATMOSPHERE
-   * ============================================================
-   */
+  /* ============================================================
+     ✨ NEPTUNE ATMOSPHERE
+     ============================================================ */
 
   const atmosphereMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
@@ -700,17 +1077,18 @@ export const Neptune = ({
 
       uniforms: {
         glowColor: {
-          value: new THREE.Color(
-            "#3d8cff"
-          ),
+          value:
+            new THREE.Color(
+              "#3d8cff"
+            ),
         },
 
         intensity: {
-          value: 0.17,
+          value: 0.16,
         },
 
         power: {
-          value: 4.6,
+          value: 4.8,
         },
       },
 
@@ -778,32 +1156,26 @@ export const Neptune = ({
     });
   }, []);
 
-  /*
-   * ============================================================
-   * 💍 NEPTUNE RING MATERIAL
-   * ============================================================
-   */
+  /* ============================================================
+     💍 NEPTUNE RING MATERIAL
+     ============================================================ */
 
   const ringMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       transparent: true,
 
-      side: THREE.DoubleSide,
+      side:
+        THREE.DoubleSide,
 
       depthWrite: false,
-
-      uniforms: {
-        uTime: {
-          value: 0,
-        },
-      },
 
       vertexShader: `
         varying vec2 vUv;
 
         void main() {
 
-          vUv = uv;
+          vUv =
+            uv;
 
           gl_Position =
             projectionMatrix *
@@ -817,12 +1189,6 @@ export const Neptune = ({
 
       fragmentShader: `
         varying vec2 vUv;
-
-        uniform float uTime;
-
-        // ======================================================
-        // HASH
-        // ======================================================
 
         float hash(vec2 p) {
 
@@ -840,16 +1206,20 @@ export const Neptune = ({
           );
         }
 
-        // ======================================================
-        // NOISE
-        // ======================================================
-
         float noise(vec2 p) {
 
-          vec2 i = floor(p);
-          vec2 f = fract(p);
+          vec2 i =
+            floor(p);
 
-          float a = hash(i);
+          vec2 f =
+            fract(p);
+
+          f =
+            f * f *
+            (3.0 - 2.0 * f);
+
+          float a =
+            hash(i);
 
           float b =
             hash(
@@ -878,25 +1248,20 @@ export const Neptune = ({
               )
             );
 
-          vec2 u =
-            f *
-            f *
-            (3.0 - 2.0 * f);
-
-          return mix(a, b, u.x)
-            +
-            (c - a) *
-            u.y *
-            (1.0 - u.x)
-            +
-            (d - b) *
-            u.x *
-            u.y;
+          return mix(
+            mix(
+              a,
+              b,
+              f.x
+            ),
+            mix(
+              c,
+              d,
+              f.x
+            ),
+            f.y
+          );
         }
-
-        // ======================================================
-        // MAIN
-        // ======================================================
 
         void main() {
 
@@ -911,72 +1276,104 @@ export const Neptune = ({
               )
             );
 
-          // Fine ring divisions
-          float radialPattern =
+          /* ==================================================
+             RING DIVISIONS
+             ================================================== */
+
+          float finePattern =
             sin(
               radial *
-              320.0
+              430.0
             ) *
             0.5 +
             0.5;
 
-          // Secondary irregularity
+          float mediumPattern =
+            sin(
+              radial *
+              165.0 +
+              0.8
+            ) *
+            0.5 +
+            0.5;
+
           float irregular =
             noise(
               vec2(
                 radial *
-                130.0,
+                150.0,
                 uv.y *
-                10.0
+                12.0
               )
             );
 
           float brightness =
-            radialPattern *
-            0.25 +
+            finePattern *
+            0.22 +
+            mediumPattern *
+            0.28 +
             irregular *
-            0.75;
+            0.50;
 
-          // ====================================================
-          // 💙 COOL DARK RING COLOR
-          // ====================================================
+          /* ==================================================
+             💙 COOL DARK NEPTUNE RINGS
+             ================================================== */
 
           vec3 darkRing =
             vec3(
-              0.035,
-              0.065,
-              0.12
+              0.025,
+              0.050,
+              0.090
+            );
+
+          vec3 midRing =
+            vec3(
+              0.085,
+              0.14,
+              0.23
             );
 
           vec3 brightRing =
             vec3(
               0.18,
-              0.30,
-              0.46
+              0.28,
+              0.42
             );
 
           vec3 ringColor =
             mix(
               darkRing,
-              brightRing,
+              midRing,
               brightness
             );
 
-          // ====================================================
-          // 🌑 SUBTLE RING DIVISION
-          // ====================================================
+          ringColor =
+            mix(
+              ringColor,
+              brightRing,
+              smoothstep(
+                0.68,
+                0.92,
+                brightness
+              ) *
+              0.30
+            );
+
+          /* ==================================================
+             🌑 SUBTLE INNER DIVISION
+             ================================================== */
 
           float division =
             smoothstep(
               0.47,
-              0.50,
+              0.49,
               radial
             ) *
             (
               1.0 -
               smoothstep(
-                0.50,
-                0.53,
+                0.49,
+                0.52,
                 radial
               )
             );
@@ -984,11 +1381,11 @@ export const Neptune = ({
           ringColor *=
             1.0 -
             division *
-            0.75;
+            0.72;
 
-          // ====================================================
-          // ALPHA
-          // ====================================================
+          /* ==================================================
+             ALPHA
+             ================================================== */
 
           float innerFade =
             smoothstep(
@@ -1012,67 +1409,16 @@ export const Neptune = ({
             vec4(
               ringColor,
               alpha *
-              0.22
+              0.20
             );
         }
       `,
     });
   }, []);
 
-  /*
-   * ============================================================
-   * 🔄 ANIMATION
-   * ============================================================
-   */
-
-  useFrame(({ clock }, delta) => {
-
-    const time =
-      clock.getElapsedTime();
-
-    // Neptune axial rotation
-    if (neptuneRef.current) {
-      neptuneRef.current.rotation.y +=
-        delta *
-        rotationSpeed;
-    }
-
-    // Very subtle ring motion
-    if (ringGroupRef.current) {
-      ringGroupRef.current.rotation.z +=
-        delta *
-        rotationSpeed *
-        0.035;
-    }
-
-    // Subtle atmosphere breathing
-    if (atmosphereRef.current) {
-
-      const pulse =
-        1 +
-        Math.sin(
-          time *
-          0.42
-        ) *
-        0.0025;
-
-      atmosphereRef.current.scale.setScalar(
-        pulse
-      );
-    }
-
-    neptuneMaterial.uniforms.uTime.value =
-      time;
-
-    ringMaterial.uniforms.uTime.value =
-      time;
-  });
-
-  /*
-   * ============================================================
-   * 🎨 RENDER
-   * ============================================================
-   */
+  /* ============================================================
+     🎨 RENDER
+     ============================================================ */
 
   return (
     <group>
@@ -1082,27 +1428,27 @@ export const Neptune = ({
           ====================================================== */}
 
       <Sphere
-        ref={neptuneRef}
         args={[
           1,
-          64,
-          64,
+          72,
+          72,
         ]}
         castShadow
         receiveShadow
       >
         <primitive
-          object={neptuneMaterial}
+          object={
+            neptuneMaterial
+          }
           attach="material"
         />
       </Sphere>
 
       {/* ======================================================
-          ✨ SUBTLE ATMOSPHERE
+          ✨ ATMOSPHERIC OUTER GLOW
           ====================================================== */}
 
       <Sphere
-        ref={atmosphereRef}
         args={[
           1.028,
           64,
@@ -1110,30 +1456,26 @@ export const Neptune = ({
         ]}
       >
         <primitive
-          object={atmosphereMaterial}
+          object={
+            atmosphereMaterial
+          }
           attach="material"
         />
       </Sphere>
 
       {/* ======================================================
-          💍 FAINT NEPTUNE RINGS
+          💍 NEPTUNE RINGS
           ====================================================== */}
 
-      <group
-        ref={ringGroupRef}
-        rotation={[
-          THREE.MathUtils.degToRad(28),
-          0,
-          0,
-        ]}
-      >
+      <group>
 
         {/* Main faint ring */}
+
         <Ring
           args={[
             1.28,
             1.39,
-            128,
+            160,
           ]}
           rotation={[
             Math.PI / 2,
@@ -1142,17 +1484,20 @@ export const Neptune = ({
           ]}
         >
           <primitive
-            object={ringMaterial}
+            object={
+              ringMaterial
+            }
             attach="material"
           />
         </Ring>
 
         {/* Outer faint ring */}
+
         <Ring
           args={[
             1.46,
             1.51,
-            128,
+            160,
           ]}
           rotation={[
             Math.PI / 2,
@@ -1163,18 +1508,21 @@ export const Neptune = ({
           <meshBasicMaterial
             color="#4d6f9d"
             transparent
-            opacity={0.12}
-            side={THREE.DoubleSide}
+            opacity={0.11}
+            side={
+              THREE.DoubleSide
+            }
             depthWrite={false}
           />
         </Ring>
 
-        {/* Extremely faint outer dust ring */}
+        {/* Extremely faint dust ring */}
+
         <Ring
           args={[
             1.55,
             1.58,
-            128,
+            160,
           ]}
           rotation={[
             Math.PI / 2,
@@ -1185,14 +1533,15 @@ export const Neptune = ({
           <meshBasicMaterial
             color="#385576"
             transparent
-            opacity={0.07}
-            side={THREE.DoubleSide}
+            opacity={0.055}
+            side={
+              THREE.DoubleSide
+            }
             depthWrite={false}
           />
         </Ring>
 
       </group>
-
     </group>
   );
 };

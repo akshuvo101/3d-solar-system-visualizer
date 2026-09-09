@@ -3,19 +3,32 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
-type VenusProps = {
-  rotationSpeed?: number;
-};
+/**
+ * ============================================================
+ * ♀ VENUS
+ * ============================================================
+ *
+ * Visual goals:
+ * - Thick yellow / golden Venus atmosphere
+ * - Spherical procedural cloud structure
+ * - No UV-based procedural terrain/cloud pattern
+ * - No longitude seam / column-wise artifact
+ * - Stable terminator and night-side shading
+ * - Separate upper cloud layer
+ * - Soft atmospheric limb glow
+ *
+ * Rotation:
+ * Planetary axial rotation is controlled centrally by Planet.tsx.
+ * This component intentionally does NOT rotate the Venus mesh.
+ *
+ * Venus is retrograde, so its rotation direction is already
+ * represented by the astronomical rotation data.
+ */
 
-export const Venus = ({
-  rotationSpeed = -0.012,
-}: VenusProps) => {
-  const venusRef = useRef<THREE.Mesh>(null);
+export const Venus = () => {
   const cloudRef = useRef<THREE.Mesh>(null);
-  const atmosphereRef = useRef<THREE.Mesh>(null);
 
-  /*
-   * ============================================================
+  /* ============================================================
    * ♀ VENUS MAIN CLOUD DECK
    * ============================================================
    */
@@ -33,22 +46,33 @@ export const Venus = ({
       },
 
       vertexShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
+        varying vec3 vLocalDirection;
         varying vec3 vWorldPosition;
+        varying vec3 vNormal;
 
         void main() {
-          vUv = uv;
+
+          /*
+           * Object-space spherical direction.
+           *
+           * Using the normalized vertex position instead of UV
+           * coordinates prevents longitude seams and column-wise
+           * procedural patterns.
+           */
+          vLocalDirection =
+            normalize(position);
 
           vec4 worldPosition =
-            modelMatrix * vec4(position, 1.0);
+            modelMatrix *
+            vec4(position, 1.0);
 
           vWorldPosition =
             worldPosition.xyz;
 
           vNormal =
             normalize(
-              mat3(modelMatrix) * normal
+              mat3(modelMatrix) *
+              normal
             );
 
           gl_Position =
@@ -59,242 +83,500 @@ export const Venus = ({
       `,
 
       fragmentShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
+        varying vec3 vLocalDirection;
         varying vec3 vWorldPosition;
+        varying vec3 vNormal;
 
         uniform float uTime;
         uniform vec3 uSunPosition;
 
-        float hash(vec2 p) {
-          return fract(
-            sin(
-              dot(
-                p,
-                vec2(127.1, 311.7)
+        /*
+         * ========================================================
+         * 3D HASH
+         * ========================================================
+         */
+
+        float hash3(vec3 p) {
+
+          p =
+            fract(
+              p *
+              0.3183099 +
+              vec3(
+                0.71,
+                0.113,
+                0.419
               )
-            ) *
-            43758.5453123
+            );
+
+          p +=
+            dot(
+              p,
+              p.yzx + 19.19
+            );
+
+          return fract(
+            (p.x + p.y) * p.z
           );
         }
 
-        float noise(vec2 p) {
-          vec2 i = floor(p);
-          vec2 f = fract(p);
+        /*
+         * ========================================================
+         * 3D VALUE NOISE
+         * ========================================================
+         */
 
-          float a = hash(i);
-          float b = hash(i + vec2(1.0, 0.0));
-          float c = hash(i + vec2(0.0, 1.0));
-          float d = hash(i + vec2(1.0, 1.0));
+        float noise3(vec3 p) {
 
-          vec2 u =
-            f * f *
-            (3.0 - 2.0 * f);
+          vec3 i =
+            floor(p);
 
-          return mix(a, b, u.x)
-            + (c - a) * u.y * (1.0 - u.x)
-            + (d - b) * u.x * u.y;
+          vec3 f =
+            fract(p);
+
+          f =
+            f *
+            f *
+            (
+              3.0 -
+              2.0 *
+              f
+            );
+
+          float n000 =
+            hash3(
+              i +
+              vec3(0.0, 0.0, 0.0)
+            );
+
+          float n100 =
+            hash3(
+              i +
+              vec3(1.0, 0.0, 0.0)
+            );
+
+          float n010 =
+            hash3(
+              i +
+              vec3(0.0, 1.0, 0.0)
+            );
+
+          float n110 =
+            hash3(
+              i +
+              vec3(1.0, 1.0, 0.0)
+            );
+
+          float n001 =
+            hash3(
+              i +
+              vec3(0.0, 0.0, 1.0)
+            );
+
+          float n101 =
+            hash3(
+              i +
+              vec3(1.0, 0.0, 1.0)
+            );
+
+          float n011 =
+            hash3(
+              i +
+              vec3(0.0, 1.0, 1.0)
+            );
+
+          float n111 =
+            hash3(
+              i +
+              vec3(1.0, 1.0, 1.0)
+            );
+
+          float x00 =
+            mix(
+              n000,
+              n100,
+              f.x
+            );
+
+          float x10 =
+            mix(
+              n010,
+              n110,
+              f.x
+            );
+
+          float x01 =
+            mix(
+              n001,
+              n101,
+              f.x
+            );
+
+          float x11 =
+            mix(
+              n011,
+              n111,
+              f.x
+            );
+
+          float y0 =
+            mix(
+              x00,
+              x10,
+              f.y
+            );
+
+          float y1 =
+            mix(
+              x01,
+              x11,
+              f.y
+            );
+
+          return mix(
+            y0,
+            y1,
+            f.z
+          );
         }
 
-        float fbm(vec2 p) {
+        /*
+         * ========================================================
+         * 3D FBM
+         * ========================================================
+         */
+
+        float fbm3(vec3 p) {
+
           float value = 0.0;
+
           float amplitude = 0.5;
 
-          for(int i = 0; i < 6; i++) {
-            value += noise(p) * amplitude;
-            p *= 2.0;
+          float frequency = 1.0;
+
+          for(int i = 0; i < 5; i++) {
+
+            value +=
+              noise3(
+                p *
+                frequency
+              ) *
+              amplitude;
+
+            frequency *= 2.0;
+
             amplitude *= 0.5;
           }
 
           return value;
         }
 
-        float warpedClouds(vec2 uv) {
-          float warpX =
-            fbm(
-              uv * 3.0 +
-              vec2(2.0, 7.0)
+        /*
+         * ========================================================
+         * DOMAIN-WARPED VENUS CLOUDS
+         * ========================================================
+         *
+         * Creates broad atmospheric structures without relying
+         * on UV coordinates.
+         */
+
+        float venusCloudField(
+          vec3 direction
+        ) {
+
+          vec3 p =
+            direction *
+            4.2;
+
+          float warp =
+            fbm3(
+              p *
+              0.72 +
+              vec3(
+                3.1,
+                -1.7,
+                4.4
+              )
             );
 
-          float warpY =
-            fbm(
-              uv * 3.0 +
-              vec2(-5.0, 3.0)
+          p +=
+            (
+              warp -
+              0.5
+            ) *
+            1.15;
+
+          float large =
+            fbm3(
+              p *
+              1.15
             );
 
-          vec2 warped = uv;
+          float medium =
+            fbm3(
+              p *
+              2.7 +
+              vec3(
+                -2.4,
+                1.3,
+                3.8
+              )
+            );
 
-          warped.x +=
-            (warpX - 0.5) * 0.16;
+          return
+            large * 0.72 +
+            medium * 0.28;
+        }
 
-          warped.y +=
-            (warpY - 0.5) * 0.10;
+        /*
+         * ========================================================
+         * LONG ATMOSPHERIC STRUCTURE
+         * ========================================================
+         *
+         * Produces stretched cloud bands by sampling 3D space
+         * along the Venus sphere.
+         */
 
-          return fbm(warped);
+        float atmosphericBands(
+          vec3 direction
+        ) {
+
+          float latitude =
+            direction.y;
+
+          float broadBands =
+            sin(
+              latitude *
+              28.0 +
+              fbm3(
+                direction *
+                3.0
+              ) *
+              3.0
+            );
+
+          broadBands =
+            broadBands *
+            0.5 +
+            0.5;
+
+          float bandNoise =
+            fbm3(
+              direction *
+              12.0 +
+              vec3(
+                1.7,
+                -3.2,
+                2.4
+              )
+            );
+
+          return
+            broadBands *
+            (
+              0.70 +
+              bandNoise *
+              0.30
+            );
+        }
+
+        /*
+         * ========================================================
+         * FINE CLOUD FILAMENTS
+         * ========================================================
+         */
+
+        float fineCloudStructure(
+          vec3 direction
+        ) {
+
+          vec3 p =
+            direction *
+            22.0;
+
+          float fine =
+            fbm3(
+              p
+            );
+
+          float finer =
+            fbm3(
+              p *
+              1.8 +
+              vec3(
+                -4.0,
+                2.0,
+                5.0
+              )
+            );
+
+          return
+            fine * 0.70 +
+            finer * 0.30;
         }
 
         void main() {
 
-          vec2 uv = vUv;
+          vec3 direction =
+            normalize(
+              vLocalDirection
+            );
 
           /*
-           * Slow Venus atmospheric movement
-           */
-          uv.x += uTime * 0.0025;
-
-          /*
-           * ==================================================
+           * ======================================================
            * VENUS COLOR PALETTE
-           * ==================================================
+           * ======================================================
            */
 
           vec3 deepBrown =
-            vec3(0.055, 0.018, 0.004);
+            vec3(
+              0.045,
+              0.012,
+              0.002
+            );
 
           vec3 darkAmber =
-            vec3(0.20, 0.065, 0.008);
+            vec3(
+              0.16,
+              0.045,
+              0.006
+            );
 
           vec3 mutedGold =
-            vec3(0.43, 0.19, 0.035);
+            vec3(
+              0.38,
+              0.15,
+              0.025
+            );
 
           vec3 warmGold =
-            vec3(0.68, 0.38, 0.095);
+            vec3(
+              0.63,
+              0.33,
+              0.070
+            );
 
           vec3 paleGold =
-            vec3(0.88, 0.65, 0.30);
+            vec3(
+              0.86,
+              0.60,
+              0.24
+            );
 
           vec3 creamCloud =
-            vec3(0.98, 0.83, 0.54);
+            vec3(
+              0.98,
+              0.82,
+              0.50
+            );
 
           /*
-           * ==================================================
+           * ======================================================
            * LARGE CLOUD STRUCTURE
-           * ==================================================
+           * ======================================================
            */
 
           float largeCloud =
-            warpedClouds(
-              vec2(
-                uv.x * 2.8,
-                uv.y * 5.0
-              )
+            venusCloudField(
+              direction
             );
 
           /*
-           * Medium turbulence
+           * ======================================================
+           * ATMOSPHERIC BANDS
+           * ======================================================
            */
 
-          float mediumCloud =
-            fbm(
-              vec2(
-                uv.x * 8.0,
-                uv.y * 15.0
-              ) +
-              vec2(
-                uTime * 0.010,
-                -uTime * 0.004
-              )
+          float bands =
+            atmosphericBands(
+              direction
             );
 
           /*
-           * Fine atmospheric structure
+           * ======================================================
+           * FINE STRUCTURE
+           * ======================================================
            */
 
-          float fineCloud =
-            fbm(
-              uv * 32.0 +
-              vec2(
-                -uTime * 0.008,
-                uTime * 0.004
-              )
+          float fine =
+            fineCloudStructure(
+              direction
             );
 
           /*
-           * Long cloud streaks
+           * ======================================================
+           * SECONDARY WISPS
+           * ======================================================
            */
 
-          float streakNoise =
-            noise(
-              vec2(
-                uv.x * 7.0 +
-                sin(uv.y * 18.0) * 1.8,
-                uv.y * 28.0
-              )
-            );
-
-          float longStreak =
-            noise(
-              vec2(
-                uv.x * 3.0 +
-                sin(uv.y * 12.0) * 2.4,
-                uv.y * 42.0
+          float wisps =
+            fbm3(
+              direction *
+              38.0 +
+              vec3(
+                2.7,
+                -4.1,
+                6.3
               )
             );
 
           /*
-           * ==================================================
-           * LATITUDE BANDS
-           * ==================================================
-           */
-
-          float latitudeWave =
-            sin(uv.y * 55.0);
-
-          float latitudeBands =
-            smoothstep(
-              0.12,
-              0.72,
-              latitudeWave * 0.5 + 0.5
-            );
-
-          float latitudeVariation =
-            fbm(
-              vec2(
-                uv.x * 4.0,
-                uv.y * 11.0
-              )
-            );
-
-          latitudeBands *=
-            0.72 +
-            latitudeVariation * 0.28;
-
-          /*
-           * ==================================================
+           * ======================================================
            * COMBINED CLOUD FIELD
-           * ==================================================
+           * ======================================================
            */
 
           float cloudPattern =
-            largeCloud * 0.40 +
-            mediumCloud * 0.31 +
-            fineCloud * 0.11 +
-            streakNoise * 0.10 +
-            longStreak * 0.08;
+            largeCloud * 0.55 +
+            bands * 0.22 +
+            fine * 0.15 +
+            wisps * 0.08;
 
           cloudPattern =
             clamp(
-              cloudPattern +
-              latitudeBands * 0.08,
+              cloudPattern,
               0.0,
               1.0
             );
 
           /*
-           * ==================================================
-           * BASE COLOR
-           * ==================================================
+           * ======================================================
+           * NATURAL CONTRAST
+           * ======================================================
+           */
+
+          float softCloud =
+            smoothstep(
+              0.24,
+              0.48,
+              largeCloud
+            );
+
+          float brightCloud =
+            smoothstep(
+              0.50,
+              0.78,
+              cloudPattern
+            );
+
+          float brightestCloud =
+            smoothstep(
+              0.72,
+              0.93,
+              cloudPattern
+            );
+
+          /*
+           * ======================================================
+           * BASE ATMOSPHERIC COLOR
+           * ======================================================
            */
 
           vec3 surface =
             mix(
               deepBrown,
               darkAmber,
-              smoothstep(
-                0.12,
-                0.40,
-                largeCloud
-              )
+              softCloud
             );
 
           surface =
@@ -302,7 +584,7 @@ export const Venus = ({
               surface,
               mutedGold,
               smoothstep(
-                0.28,
+                0.30,
                 0.56,
                 cloudPattern
               )
@@ -314,7 +596,7 @@ export const Venus = ({
               warmGold,
               smoothstep(
                 0.48,
-                0.70,
+                0.69,
                 cloudPattern
               )
             );
@@ -324,7 +606,7 @@ export const Venus = ({
               surface,
               paleGold,
               smoothstep(
-                0.63,
+                0.62,
                 0.84,
                 cloudPattern
               )
@@ -334,54 +616,67 @@ export const Venus = ({
             mix(
               surface,
               creamCloud,
-              smoothstep(
-                0.78,
-                0.96,
-                cloudPattern
+              brightestCloud
+            );
+
+          /*
+           * ======================================================
+           * CLOUD DEPTH
+           * ======================================================
+           */
+
+          float depthNoise =
+            fbm3(
+              direction *
+              17.0 +
+              vec3(
+                -3.2,
+                4.7,
+                -1.8
               )
             );
 
-          /*
-           * Cloud depth
-           */
-
-          float cloudDepth =
-            fbm(
-              uv * 18.0 +
-              vec2(3.7, -6.1)
-            );
-
           surface *=
-            0.80 +
-            cloudDepth * 0.28;
+            0.82 +
+            depthNoise *
+            0.24;
 
           /*
-           * Dark atmospheric filaments
+           * ======================================================
+           * DARK ATMOSPHERIC FILAMENTS
+           * ======================================================
            */
 
           float darkFilaments =
             smoothstep(
-              0.56,
-              0.78,
-              streakNoise
+              0.66,
+              0.84,
+              fine
             );
 
           surface =
             mix(
               surface,
               surface *
-              vec3(0.62, 0.48, 0.30),
-              darkFilaments * 0.20
+              vec3(
+                0.58,
+                0.43,
+                0.23
+              ),
+              darkFilaments *
+              0.18
             );
 
           /*
-           * ==================================================
+           * ======================================================
            * SUN LIGHT
-           * ==================================================
+           * ======================================================
            */
 
           vec3 normal =
-            normalize(vNormal);
+            normalize(
+              vNormal
+            );
 
           vec3 venusToSun =
             normalize(
@@ -407,59 +702,63 @@ export const Venus = ({
               0.62
             );
 
+          /*
+           * Soft visible daylight transition.
+           */
+
           float daylight =
             smoothstep(
               -0.12,
-              0.25,
+              0.24,
               NdotL
             );
 
           /*
-           * ==================================================
-           * IMPORTANT:
-           * SHADOW-RECEIVING BASE
-           * ==================================================
-           *
-           * The actual shadow map is handled by Three.js.
-           * We intentionally keep the shader's own lighting
-           * soft enough so the shadow can remain visible.
+           * ======================================================
+           * ATMOSPHERIC DAY INTENSITY
+           * ======================================================
            */
 
           float dayIntensity =
-            0.115 +
-            directLight * 1.08;
+            0.12 +
+            directLight *
+            1.04;
 
           surface *=
             dayIntensity;
 
           /*
-           * Warm solar illumination
+           * ======================================================
+           * WARM SOLAR TINT
+           * ======================================================
            */
 
           vec3 sunlightTint =
             vec3(
               1.0,
               0.90,
-              0.69
+              0.68
             );
 
           surface =
             mix(
               surface,
-              surface * sunlightTint,
-              daylight * 0.20
+              surface *
+              sunlightTint,
+              daylight *
+              0.18
             );
 
           /*
-           * ==================================================
+           * ======================================================
            * TERMINATOR
-           * ==================================================
+           * ======================================================
            */
 
           float twilight =
             smoothstep(
-              -0.24,
-              0.07,
+              -0.26,
+              0.06,
               NdotL
             ) *
             (
@@ -473,17 +772,17 @@ export const Venus = ({
 
           surface +=
             vec3(
-              0.24,
-              0.065,
-              0.012
+              0.22,
+              0.055,
+              0.009
             ) *
             twilight *
-            0.085;
+            0.08;
 
           /*
-           * ==================================================
+           * ======================================================
            * NIGHT SIDE
-           * ==================================================
+           * ======================================================
            */
 
           float night =
@@ -491,25 +790,26 @@ export const Venus = ({
             daylight;
 
           surface *=
-            0.13 +
-            daylight * 0.87;
+            0.14 +
+            daylight *
+            0.86;
 
           /*
-           * Very subtle atmospheric bounce
+           * Very subtle reflected atmospheric light.
            */
 
           surface +=
             vec3(
               0.007,
-              0.0025,
-              0.0007
+              0.0023,
+              0.0006
             ) *
             night;
 
           /*
-           * ==================================================
+           * ======================================================
            * LIMB LIGHT
-           * ==================================================
+           * ======================================================
            */
 
           vec3 viewDirection =
@@ -529,23 +829,30 @@ export const Venus = ({
 
           float limb =
             pow(
-              1.0 - viewFacing,
-              3.2
+              1.0 -
+              viewFacing,
+              3.0
             );
 
           surface +=
             vec3(
               0.055,
-              0.028,
-              0.008
+              0.026,
+              0.007
             ) *
             limb *
             daylight;
 
+          /*
+           * Prevent invalid dark values.
+           */
+
           surface =
             max(
               surface,
-              vec3(0.001)
+              vec3(
+                0.001
+              )
             );
 
           gl_FragColor =
@@ -557,23 +864,19 @@ export const Venus = ({
       `,
 
       toneMapped: false,
-
-      /*
-       * Important for custom shader material.
-       */
       lights: false,
     });
   }, []);
 
-  /*
-   * ============================================================
-   * ☁️ UPPER CLOUD LAYER
+  /* ============================================================
+   * ☁️ VENUS UPPER CLOUD LAYER
    * ============================================================
    */
 
   const cloudMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       transparent: true,
+
       depthWrite: false,
 
       uniforms: {
@@ -582,22 +885,31 @@ export const Venus = ({
         },
 
         uSunPosition: {
-          value: new THREE.Vector3(0, 0, 0),
+          value:
+            new THREE.Vector3(
+              0,
+              0,
+              0
+            ),
         },
       },
 
       vertexShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
+        varying vec3 vLocalDirection;
         varying vec3 vWorldPosition;
+        varying vec3 vNormal;
 
         void main() {
 
-          vUv = uv;
+          vLocalDirection =
+            normalize(position);
 
           vec4 worldPosition =
             modelMatrix *
-            vec4(position, 1.0);
+            vec4(
+              position,
+              1.0
+            );
 
           vWorldPosition =
             worldPosition.xyz;
@@ -611,61 +923,219 @@ export const Venus = ({
           gl_Position =
             projectionMatrix *
             modelViewMatrix *
-            vec4(position, 1.0);
+            vec4(
+              position,
+              1.0
+            );
         }
       `,
 
       fragmentShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
+        varying vec3 vLocalDirection;
         varying vec3 vWorldPosition;
+        varying vec3 vNormal;
 
         uniform float uTime;
         uniform vec3 uSunPosition;
 
-        float hash(vec2 p) {
-          return fract(
-            sin(
-              dot(
-                p,
-                vec2(127.1, 311.7)
+        /*
+         * ========================================================
+         * 3D HASH
+         * ========================================================
+         */
+
+        float hash3(vec3 p) {
+
+          p =
+            fract(
+              p *
+              0.3183099 +
+              vec3(
+                0.71,
+                0.113,
+                0.419
               )
-            ) *
-            43758.5453123
+            );
+
+          p +=
+            dot(
+              p,
+              p.yzx + 19.19
+            );
+
+          return fract(
+            (p.x + p.y) * p.z
           );
         }
 
-        float noise(vec2 p) {
+        /*
+         * ========================================================
+         * 3D NOISE
+         * ========================================================
+         */
 
-          vec2 i = floor(p);
-          vec2 f = fract(p);
+        float noise3(vec3 p) {
 
-          float a = hash(i);
-          float b = hash(i + vec2(1.0, 0.0));
-          float c = hash(i + vec2(0.0, 1.0));
-          float d = hash(i + vec2(1.0, 1.0));
+          vec3 i =
+            floor(p);
 
-          vec2 u =
-            f * f *
-            (3.0 - 2.0 * f);
+          vec3 f =
+            fract(p);
 
-          return mix(a, b, u.x)
-            + (c - a) * u.y * (1.0 - u.x)
-            + (d - b) * u.x * u.y;
+          f =
+            f *
+            f *
+            (
+              3.0 -
+              2.0 *
+              f
+            );
+
+          float n000 =
+            hash3(
+              i +
+              vec3(
+                0.0
+              )
+            );
+
+          float n100 =
+            hash3(
+              i +
+              vec3(
+                1.0,
+                0.0,
+                0.0
+              )
+            );
+
+          float n010 =
+            hash3(
+              i +
+              vec3(
+                0.0,
+                1.0,
+                0.0
+              )
+            );
+
+          float n110 =
+            hash3(
+              i +
+              vec3(
+                1.0,
+                1.0,
+                0.0
+              )
+            );
+
+          float n001 =
+            hash3(
+              i +
+              vec3(
+                0.0,
+                0.0,
+                1.0
+              )
+            );
+
+          float n101 =
+            hash3(
+              i +
+              vec3(
+                1.0,
+                0.0,
+                1.0
+              )
+            );
+
+          float n011 =
+            hash3(
+              i +
+              vec3(
+                0.0,
+                1.0,
+                1.0
+              )
+            );
+
+          float n111 =
+            hash3(
+              i +
+              vec3(
+                1.0
+              )
+            );
+
+          float x00 =
+            mix(
+              n000,
+              n100,
+              f.x
+            );
+
+          float x10 =
+            mix(
+              n010,
+              n110,
+              f.x
+            );
+
+          float x01 =
+            mix(
+              n001,
+              n101,
+              f.x
+            );
+
+          float x11 =
+            mix(
+              n011,
+              n111,
+              f.x
+            );
+
+          float y0 =
+            mix(
+              x00,
+              x10,
+              f.y
+            );
+
+          float y1 =
+            mix(
+              x01,
+              x11,
+              f.y
+            );
+
+          return mix(
+            y0,
+            y1,
+            f.z
+          );
         }
 
-        float fbm(vec2 p) {
+        /*
+         * ========================================================
+         * 3D FBM
+         * ========================================================
+         */
+
+        float fbm3(vec3 p) {
 
           float value = 0.0;
+
           float amplitude = 0.5;
 
-          for(int i = 0; i < 5; i++) {
+          for(int i = 0; i < 4; i++) {
 
             value +=
-              noise(p) *
+              noise3(p) *
               amplitude;
 
             p *= 2.0;
+
             amplitude *= 0.5;
           }
 
@@ -674,56 +1144,105 @@ export const Venus = ({
 
         void main() {
 
-          vec2 uv = vUv;
+          vec3 direction =
+            normalize(
+              vLocalDirection
+            );
 
           /*
-           * Upper cloud movement
+           * ======================================================
+           * SLOW UPPER CLOUD DRIFT
+           * ======================================================
+           *
+           * The direction is warped instead of using UV.x.
+           * This avoids a longitudinal seam.
            */
-          uv.x +=
-            uTime * 0.0055;
+
+          vec3 drift =
+            vec3(
+              uTime * 0.0022,
+              -uTime * 0.0005,
+              uTime * 0.0011
+            );
+
+          vec3 cloudDirection =
+            normalize(
+              direction +
+              drift *
+              0.18
+            );
 
           /*
-           * Large upper cloud structures
+           * ======================================================
+           * LARGE CLOUD STRUCTURE
+           * ======================================================
            */
 
           float large =
-            fbm(
-              vec2(
-                uv.x * 5.5,
-                uv.y * 9.0
+            fbm3(
+              cloudDirection *
+              5.8 +
+              vec3(
+                2.1,
+                -3.7,
+                4.6
               )
             );
 
           /*
-           * Fine cloud filaments
+           * ======================================================
+           * MEDIUM STRUCTURE
+           * ======================================================
+           */
+
+          float medium =
+            fbm3(
+              cloudDirection *
+              13.0 +
+              vec3(
+                -4.0,
+                2.4,
+                1.7
+              )
+            );
+
+          /*
+           * ======================================================
+           * FINE CLOUD DETAIL
+           * ======================================================
            */
 
           float fine =
-            fbm(
-              uv * 30.0 +
-              vec2(
-                -uTime * 0.012,
-                uTime * 0.004
+            fbm3(
+              cloudDirection *
+              31.0 +
+              vec3(
+                3.3,
+                -5.1,
+                2.2
               )
             );
 
           /*
-           * Long streaks
+           * ======================================================
+           * ATMOSPHERIC STREAKS
+           * ======================================================
            */
 
           float streak =
-            noise(
-              vec2(
-                uv.x * 9.0 +
-                sin(uv.y * 16.0) * 1.4,
-                uv.y * 36.0
+            fbm3(
+              vec3(
+                direction.x * 7.0,
+                direction.y * 30.0,
+                direction.z * 7.0
               )
             );
 
           float cloudMask =
-            large * 0.72 +
-            fine * 0.16 +
-            streak * 0.12;
+            large * 0.64 +
+            medium * 0.20 +
+            fine * 0.09 +
+            streak * 0.07;
 
           cloudMask =
             smoothstep(
@@ -733,11 +1252,15 @@ export const Venus = ({
             );
 
           /*
-           * Sun direction
+           * ======================================================
+           * SUN LIGHT
+           * ======================================================
            */
 
           vec3 normal =
-            normalize(vNormal);
+            normalize(
+              vNormal
+            );
 
           vec3 venusToSun =
             normalize(
@@ -757,11 +1280,13 @@ export const Venus = ({
           sunlight =
             pow(
               sunlight,
-              0.65
+              0.68
             );
 
           /*
-           * Cloud colors
+           * ======================================================
+           * CLOUD COLORS
+           * ======================================================
            */
 
           vec3 cloudDay =
@@ -773,16 +1298,16 @@ export const Venus = ({
 
           vec3 cloudMid =
             vec3(
-              0.72,
-              0.43,
-              0.13
+              0.70,
+              0.40,
+              0.11
             );
 
           vec3 cloudNight =
             vec3(
-              0.025,
-              0.009,
-              0.002
+              0.018,
+              0.005,
+              0.001
             );
 
           vec3 cloudColor =
@@ -808,33 +1333,45 @@ export const Venus = ({
             );
 
           /*
-           * Bright cloud tops
+           * Bright illuminated cloud tops.
            */
 
           cloudColor +=
             vec3(
               0.11,
-              0.055,
-              0.015
+              0.052,
+              0.014
             ) *
             pow(
               sunlight,
-              2.5
+              2.4
             );
 
           /*
-           * Keep this layer subtle.
+           * ======================================================
+           * FINAL CLOUD OPACITY
+           * ======================================================
            */
 
           float alpha =
             cloudMask *
             (
-              0.055 +
-              sunlight * 0.19
+              0.045 +
+              sunlight *
+              0.17
             );
 
+          /*
+           * Slightly stronger illuminated edge.
+           */
+
           alpha +=
-            cloudMask * 0.012;
+            cloudMask *
+            pow(
+              sunlight,
+              2.0
+            ) *
+            0.025;
 
           gl_FragColor =
             vec4(
@@ -848,8 +1385,7 @@ export const Venus = ({
     });
   }, []);
 
-  /*
-   * ============================================================
+  /* ============================================================
    * ✨ VENUS ATMOSPHERE
    * ============================================================
    */
@@ -869,16 +1405,16 @@ export const Venus = ({
         glowColor: {
           value:
             new THREE.Color(
-              "#e9a64d"
+              "#e7a047"
             ),
         },
 
         intensity: {
-          value: 0.145,
+          value: 0.135,
         },
 
         power: {
-          value: 3.8,
+          value: 3.6,
         },
       },
 
@@ -933,7 +1469,8 @@ export const Venus = ({
 
           float fresnel =
             pow(
-              1.0 - viewDot,
+              1.0 -
+              viewDot,
               power
             );
 
@@ -953,10 +1490,17 @@ export const Venus = ({
     });
   }, []);
 
-  /*
-   * ============================================================
+  /* ============================================================
    * 🔄 ANIMATION
    * ============================================================
+   *
+   * IMPORTANT:
+   * Venus itself is NOT rotated here.
+   *
+   * Planet.tsx controls the absolute astronomical rotation.
+   *
+   * The upper cloud layer receives only a subtle independent
+   * visual drift to simulate Venus' dynamic cloud atmosphere.
    */
 
   useFrame(
@@ -966,42 +1510,17 @@ export const Venus = ({
         clock.getElapsedTime();
 
       /*
-       * Venus retrograde rotation.
-       */
-
-      if (venusRef.current) {
-        venusRef.current.rotation.y +=
-          delta *
-          rotationSpeed;
-      }
-
-      /*
-       * Upper cloud layer moves faster.
+       * Upper cloud deck:
+       *
+       * Small independent movement.
+       * This is intentionally much slower than the old
+       * direct planet rotation system.
        */
 
       if (cloudRef.current) {
         cloudRef.current.rotation.y +=
           delta *
-          rotationSpeed *
-          1.22;
-      }
-
-      /*
-       * Tiny atmosphere breathing.
-       */
-
-      if (atmosphereRef.current) {
-
-        const pulse =
-          1 +
-          Math.sin(
-            time * 0.55
-          ) *
-          0.0012;
-
-        atmosphereRef.current.scale.setScalar(
-          pulse
-        );
+          0.0042;
       }
 
       venusMaterial.uniforms.uTime.value =
@@ -1012,44 +1531,74 @@ export const Venus = ({
     }
   );
 
+  /* ============================================================
+   * ♀ VENUS RENDER
+   * ============================================================
+   */
+
   return (
     <group>
 
-      {/* Venus main cloud deck */}
+      {/* ======================================================
+          Main Venus atmospheric cloud deck
+          ====================================================== */}
+
       <Sphere
-        ref={venusRef}
-        args={[1, 96, 96]}
+        args={[
+          1,
+          96,
+          96,
+        ]}
         castShadow={false}
         receiveShadow
       >
         <primitive
-          object={venusMaterial}
+          object={
+            venusMaterial
+          }
           attach="material"
         />
       </Sphere>
 
-      {/* Upper cloud layer */}
+      {/* ======================================================
+          Upper cloud layer
+          ====================================================== */}
+
       <Sphere
         ref={cloudRef}
-        args={[1.014, 72, 72]}
+        args={[
+          1.014,
+          72,
+          72,
+        ]}
         castShadow={false}
         receiveShadow={false}
       >
         <primitive
-          object={cloudMaterial}
+          object={
+            cloudMaterial
+          }
           attach="material"
         />
       </Sphere>
 
-      {/* Atmospheric limb */}
+      {/* ======================================================
+          Atmospheric limb
+          ====================================================== */}
+
       <Sphere
-        ref={atmosphereRef}
-        args={[1.034, 64, 64]}
+        args={[
+          1.034,
+          64,
+          64,
+        ]}
         castShadow={false}
         receiveShadow={false}
       >
         <primitive
-          object={atmosphereMaterial}
+          object={
+            atmosphereMaterial
+          }
           attach="material"
         />
       </Sphere>

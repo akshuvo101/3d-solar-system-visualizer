@@ -11,6 +11,19 @@ export const planetData: PlanetType[] = [
     rotationPeriodHours: 1407.6,
     rotationDirection: 1,
 
+    // 🌌 Astronomical rotation model
+    //
+    // J2000.0 = 2000-01-01 12:00:00 UTC/TDB
+    //
+    // Mercury:
+    // W = W0 + Wdot × d
+    //
+    // W0   = 329.5988°
+    // Wdot = +6.1385108°/day
+    axialTiltDeg: 0.034,
+    rotationPhaseAtJ2000Deg: 329.5988,
+    rotationRateDegPerDay: 6.1385108,
+
     realSpeed: 170000,
     texture: "/textures/mercury.jpeg",
     moons: 0,
@@ -43,6 +56,21 @@ export const planetData: PlanetType[] = [
     rotationPeriodHours: 5832,
     rotationDirection: -1,
 
+    // 🌌 Astronomical rotation model
+    //
+    // Venus rotates retrograde.
+    //
+    // W = W0 + Wdot × d
+    //
+    // W0   = 160.20°
+    // Wdot = -1.4813688°/day
+    //
+    // The ~177.36° obliquity represents the
+    // retrograde orientation of Venus's spin axis.
+    axialTiltDeg: 177.36,
+    rotationPhaseAtJ2000Deg: 160.20,
+    rotationRateDegPerDay: -1.4813688,
+
     realSpeed: 126000,
     texture: "/textures/venus.jpeg",
     moons: 0,
@@ -74,6 +102,16 @@ export const planetData: PlanetType[] = [
     orbitalPeriodDays: 365.256,
     rotationPeriodHours: 23.934,
     rotationDirection: 1,
+
+    // 🌌 Astronomical rotation model
+    //
+    // W = W0 + Wdot × d
+    //
+    // W0   = 190.147°
+    // Wdot = +360.9856235°/day
+    axialTiltDeg: 23.4393,
+    rotationPhaseAtJ2000Deg: 190.147,
+    rotationRateDegPerDay: 360.9856235,
 
     realSpeed: 107000,
     texture: "/textures/earth.jpg",
@@ -119,6 +157,16 @@ export const planetData: PlanetType[] = [
     orbitalPeriodDays: 686.98,
     rotationPeriodHours: 24.623,
     rotationDirection: 1,
+
+    // 🌌 Astronomical rotation model
+    //
+    // W = W0 + Wdot × d
+    //
+    // W0   = 176.630°
+    // Wdot = +350.89198226°/day
+    axialTiltDeg: 25.19,
+    rotationPhaseAtJ2000Deg: 176.630,
+    rotationRateDegPerDay: 350.89198226,
 
     realSpeed: 87000,
     texture: "/textures/mars.jpg",
@@ -174,6 +222,18 @@ export const planetData: PlanetType[] = [
     rotationPeriodHours: 9.925,
     rotationDirection: 1,
 
+    // 🌌 Astronomical rotation model
+    //
+    // Jupiter System III rotation:
+    //
+    // W = W0 + Wdot × d
+    //
+    // W0   = 284.95°
+    // Wdot = +870.5366420°/day
+    axialTiltDeg: 3.13,
+    rotationPhaseAtJ2000Deg: 284.95,
+    rotationRateDegPerDay: 870.536642,
+    
     realSpeed: 47000,
     texture: "/textures/jupiter.jpg",
     moons: 79,
@@ -246,6 +306,18 @@ export const planetData: PlanetType[] = [
     orbitalPeriodDays: 10759.22,
     rotationPeriodHours: 10.656,
     rotationDirection: 1,
+
+    // 🌌 Astronomical rotation model
+    //
+    // Saturn System III rotation:
+    //
+    // W = W0 + Wdot × d
+    //
+    // W0   = 38.90°
+    // Wdot = +810.7939024°/day
+    axialTiltDeg: 26.73,
+    rotationPhaseAtJ2000Deg: 38.90,
+    rotationRateDegPerDay: 810.7939024,
 
     realSpeed: 35000,
     texture: "/textures/saturn.jpg",
@@ -346,6 +418,21 @@ export const planetData: PlanetType[] = [
     rotationPeriodHours: 17.24,
     rotationDirection: -1,
 
+    // 🌌 Astronomical rotation model
+    //
+    // Uranus has an extreme axial tilt.
+    //
+    // W = W0 + Wdot × d
+    //
+    // W0   = 203.81°
+    // Wdot = -501.1600928°/day
+    //
+    // The negative rate represents retrograde rotation
+    // in the IAU rotational convention.
+    axialTiltDeg: 97.77,
+    rotationPhaseAtJ2000Deg: 203.81,
+    rotationRateDegPerDay: -501.1600928,
+
     realSpeed: 24000,
     texture: "/textures/uranus.jpeg",
     moons: 27,
@@ -426,6 +513,18 @@ export const planetData: PlanetType[] = [
     orbitalPeriodDays: 60182,
     rotationPeriodHours: 16.11,
     rotationDirection: 1,
+
+    // 🌌 Astronomical rotation model
+    //
+    // Neptune System III rotation:
+    //
+    // W = W0 + Wdot × d
+    //
+    // W0   = 253.18°
+    // Wdot = +536.3128492°/day
+    axialTiltDeg: 28.32,
+    rotationPhaseAtJ2000Deg: 253.18,
+    rotationRateDegPerDay: 536.3128492,
 
     realSpeed: 19000,
     texture: "/textures/astronomy.jpg",

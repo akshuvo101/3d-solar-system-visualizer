@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Props = {
   backgroundUrl?: string;
@@ -15,6 +15,7 @@ export default function AudioPlayer({
 }: Props) {
   const backgroundAudioRef = useRef<HTMLAudioElement | null>(null);
   const planetAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [hasUserInteracted, setHasUserInteracted] = useState(false);
 
   /*
    * --------------------------------------------------
@@ -27,6 +28,22 @@ export default function AudioPlayer({
    * We also handle browser autoplay restrictions by
    * retrying playback after the first user interaction.
    */
+
+  useEffect(() => {
+    const handleUserInteraction = () => {
+      setHasUserInteracted(true);
+    };
+
+    document.addEventListener("click", handleUserInteraction);
+    document.addEventListener("touchstart", handleUserInteraction);
+    document.addEventListener("keydown", handleUserInteraction);
+
+    return () => {
+      document.removeEventListener("click", handleUserInteraction);
+      document.removeEventListener("touchstart", handleUserInteraction);
+      document.removeEventListener("keydown", handleUserInteraction);
+    };
+  }, []);
 
   useEffect(() => {
     const audio = backgroundAudioRef.current;
@@ -55,12 +72,12 @@ export default function AudioPlayer({
     };
 
     /*
-     * Try immediately
+     * Try immediately.
      */
     playBackground();
 
     /*
-     * Try again when audio becomes ready
+     * Try again when audio becomes ready.
      */
     const handleCanPlay = () => {
       playBackground();
@@ -72,20 +89,6 @@ export default function AudioPlayer({
 
     audio.addEventListener("canplay", handleCanPlay);
     audio.addEventListener("loadeddata", handleLoadedData);
-
-    /*
-     * Browser autoplay fallback.
-     *
-     * Once the user clicks / touches / presses a key,
-     * the browser allows audio playback.
-     */
-    const handleUserInteraction = () => {
-      playBackground();
-    };
-
-    document.addEventListener("click", handleUserInteraction);
-    document.addEventListener("touchstart", handleUserInteraction);
-    document.addEventListener("keydown", handleUserInteraction);
 
     /*
      * If the tab becomes visible again, try playback.
@@ -115,19 +118,6 @@ export default function AudioPlayer({
       audio.removeEventListener("loadeddata", handleLoadedData);
 
       document.removeEventListener(
-        "click",
-        handleUserInteraction
-      );
-      document.removeEventListener(
-        "touchstart",
-        handleUserInteraction
-      );
-      document.removeEventListener(
-        "keydown",
-        handleUserInteraction
-      );
-
-      document.removeEventListener(
         "visibilitychange",
         handleVisibilityChange
       );
@@ -148,6 +138,13 @@ export default function AudioPlayer({
 
     if (!audio || !backgroundUrl) return;
 
+    if (!hasUserInteracted) {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      return;
+    }
+
     if (audio.src !== new URL(backgroundUrl, window.location.href).href) {
       audio.src = backgroundUrl;
       audio.load();
@@ -156,7 +153,7 @@ export default function AudioPlayer({
     if (isEnabled) {
       audio.play().catch(() => {});
     }
-  }, [backgroundUrl, isEnabled]);
+  }, [backgroundUrl, hasUserInteracted, isEnabled]);
 
   /*
    * --------------------------------------------------
@@ -254,16 +251,15 @@ export default function AudioPlayer({
       {/* Background Music */}
       <audio
         ref={backgroundAudioRef}
-        src={backgroundUrl}
         loop
-        preload="auto"
+        preload="none"
         playsInline
       />
 
       {/* Planet Narration */}
       <audio
         ref={planetAudioRef}
-        preload="auto"
+        preload="none"
         playsInline
       />
     </>

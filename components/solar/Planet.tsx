@@ -18,8 +18,20 @@ import PlanetShadowReceiver from "./PlanetShadowReceiver";
 import * as THREE from "three";
 
 import { PlanetComponentProps } from "@/types";
-import { SIMULATION_MODES } from "@/lib/simulationTime";
 import { PLANET_VISUAL_SCALE } from "@/lib/planetVisualScale";
+
+import {
+  getPlanetHeliocentricPosition,
+} from "@/lib/astronomy/planetaryPosition";
+
+import {
+  ORBITAL_ELEMENTS,
+} from "@/lib/astronomy/orbitalElements";
+
+import {
+  getPlanetRotationPhaseRadians,
+  getPlanetAxialTiltRadians,
+} from "@/lib/astronomy/rotationPhase";
 
 /* ============================================================
    🪐 PLANET
@@ -30,6 +42,8 @@ export const Planet = ({
   simulationMode,
   playbackSpeed,
   selectedPlanet,
+  simulationTimeRef,
+  simulationDeltaDaysRef,
   setRef,
   onClick,
 }: PlanetComponentProps) => {
@@ -62,13 +76,36 @@ export const Planet = ({
     useRef<THREE.Group | null>(null);
 
   /* ==========================================================
+     🌐 AXIAL TILT GROUP
+
+     This group controls the orientation of the
+     planet's rotational axis.
+
+     Example:
+
+     Earth   ≈ 23.44°
+     Mars    ≈ 25.19°
+     Uranus  ≈ 97.77°
+     Venus   ≈ 177.36°
+
+     This is intentionally separated from the
+     daily rotational phase.
+     ========================================================== */
+
+  const axialTiltGroupRef =
+    useRef<THREE.Group | null>(null);
+
+  /* ==========================================================
      🌀 PLANET ROTATION GROUP
 
      ONLY the actual planet visual rotates here.
 
-     Moon system stays outside this group so the Moon's
-     orbital movement is NOT affected by the planet's
-     axial rotation.
+     The absolute astronomical rotation phase is
+     applied to this group.
+
+     Moon system stays outside this group so the
+     Moon's orbital movement is NOT affected by the
+     planet's axial rotation.
      ========================================================== */
 
   const rotationGroupRef =
@@ -80,56 +117,6 @@ export const Planet = ({
 
   const moonGroupRef =
     useRef<THREE.Group | null>(null);
-
-  /* ==========================================================
-     🪐 ORBIT ANGLE
-
-     The current orbital angle is restored from localStorage
-     so refreshing the page does NOT reset the planet to
-     its original starting position.
-     ========================================================== */
-
-  const orbitalAngle = useRef<number>(
-    typeof window !== "undefined"
-      ? Number(
-          localStorage.getItem(
-            `solar-planet-angle-${planet.name}`,
-          ),
-        ) || 0
-      : 0,
-  );
-
-  /* ==========================================================
-     💾 ORBIT POSITION SAVE CONTROL
-
-     We don't write to localStorage every frame.
-     Instead, the position is saved approximately every
-     500ms to reduce unnecessary browser storage writes.
-     ========================================================== */
-
-  const lastSavedAngle = useRef<number>(
-    orbitalAngle.current,
-  );
-
-  const lastSaveTime = useRef<number>(0);
-
-  /* ==========================================================
-     🌀 SMOOTH SIMULATION TIME
-
-     Keeps Day → Month → Year transitions smooth.
-
-     The value represents:
-
-     simulation Earth-days
-     per real-world second.
-     ========================================================== */
-
-  const currentSimulationDaysPerSecond =
-    useRef<number>(
-      SIMULATION_MODES[
-        simulationMode
-      ].daysPerSecond,
-    );
 
   /* ==========================================================
      🎬 FRAME LOOP
@@ -176,239 +163,277 @@ export const Planet = ({
     }
 
     /* ========================================================
-       ⏱️ SIMULATION TIME
+       🌌 SHARED ASTRONOMICAL TIME
 
-       Day:
-       1 real second = 1 real second
+       SolarSystem3D.tsx owns the simulation clock.
 
-       Month:
-       30 simulation days = 1 real hour
+       Planet.tsx does NOT create or advance its own clock.
 
-       Year:
-       365.256 simulation days = 1 real hour
+       All planets read the same simulated timestamp.
+
+              Shared Simulation Clock
+                       ↓
+                simulationTimeRef
+                       ↓
+                  Planet.tsx
+                       ↓
+              simulated Date
+                       ↓
+          astronomical calculations
        ======================================================== */
 
-    const targetSimulationDaysPerSecond =
-      SIMULATION_MODES[
-        simulationMode
-      ].daysPerSecond;
-
-    currentSimulationDaysPerSecond.current =
-      THREE.MathUtils.lerp(
-        currentSimulationDaysPerSecond.current,
-        targetSimulationDaysPerSecond,
-        1 - Math.exp(-8 * delta),
+    const simulationDate =
+      new Date(
+        simulationTimeRef.current,
       );
 
     /* ========================================================
-       ⚡ PLAYBACK SPEED
+       🪐 REAL ASTRONOMICAL PLANET POSITION
 
-       Base simulation speed
-              ×
-       User selected playback speed
+       Sun is intentionally excluded.
 
-       If playbackSpeed is undefined for any reason,
-       fallback to 1× so the planet never receives
-       NaN position values.
+       The planetaryPosition engine calculates:
 
-       Camera distance does NOT affect this.
+       Date
+        ↓
+       Julian Date
+        ↓
+       Days since J2000
+        ↓
+       Mean Anomaly
+        ↓
+       Kepler Equation
+        ↓
+       Eccentric Anomaly
+        ↓
+       True Anomaly
+        ↓
+       Orbital Radius
+        ↓
+       Inclination / Ω / ω
+        ↓
+       Heliocentric XYZ
        ======================================================== */
 
-    const effectivePlaybackSpeed =
-      playbackSpeed ?? 1;
+    const orbitalElements =
+      ORBITAL_ELEMENTS[
+        planet.name
+      ];
 
-    const daysPerSecond =
-      currentSimulationDaysPerSecond.current *
-      effectivePlaybackSpeed;
+    if (orbitalElements) {
+      const astronomicalPosition =
+        getPlanetHeliocentricPosition(
+          planet.name,
+          simulationDate,
+        );
 
-    /* ========================================================
-       🪐 REAL PLANET ORBIT
+      /* ======================================================
+         📐 REAL → VISUAL SCALE
 
-       The planet's orbital period is measured in
-       Earth days.
+         astronomicalPosition is measured in AU.
 
-       Example:
+         Example:
 
-       Earth  ≈ 365.256 days
-       Mars   ≈ 687 days
-       Jupiter ≈ 4332.59 days
+         Earth:
+         ~1 AU
 
-       Formula:
+         Jupiter:
+         ~5.2 AU
 
-       rotations/orbits per simulation day
-       =
-       1 / orbitalPeriodDays
+         But our Three.js scene uses:
 
-       radians/sec
-       =
-       daysPerSecond
-       ×
-       1 / orbitalPeriodDays
-       ×
-       2π
+         Earth:
+         distance = 20
 
-       IMPORTANT:
-       Camera distance does NOT affect this speed.
-       ======================================================== */
+         Jupiter:
+         distance = 32
 
-    const orbitalSpeed =
-      (daysPerSecond /
-        planet.orbitalPeriodDays) *
-      Math.PI *
-      2;
+         Therefore we normalize each planet using its
+         existing visual orbital distance.
 
-    orbitalAngle.current -=
-      orbitalSpeed *
-      delta;
+         This preserves the current visual composition
+         while making the POSITION itself astronomical.
 
-    group.position.x =
-      planet.distance *
-      Math.cos(
-        orbitalAngle.current,
-      );
+         Scale:
 
-    group.position.z =
-      planet.distance *
-      Math.sin(
-        orbitalAngle.current,
-      );
+         visualDistance / semiMajorAxisAU
+         ====================================================== */
 
-    /* ========================================================
-       💾 SAVE CURRENT ORBIT POSITION
+      const visualScale =
+        planet.distance /
+        orbitalElements.semiMajorAxisAU;
 
-       Save approximately every 500ms instead of every
-       frame.
+      /* ======================================================
+         🌌 COORDINATE SYSTEM CONVERSION
 
-       This allows the next page refresh to restore the
-       planet very close to its previous position.
-       ======================================================== */
+         Astronomy engine:
 
-    const now = performance.now();
+         X = ecliptic X
+         Y = ecliptic Y
+         Z = ecliptic normal
 
-    if (
-      now - lastSaveTime.current > 500 &&
-      Math.abs(
-        orbitalAngle.current -
-          lastSavedAngle.current,
-      ) > 0.0001
-    ) {
-      localStorage.setItem(
-        `solar-planet-angle-${planet.name}`,
-        orbitalAngle.current.toString(),
-      );
+         Three.js scene:
 
-      lastSavedAngle.current =
-        orbitalAngle.current;
+         X = horizontal
+         Y = vertical
+         Z = depth
 
-      lastSaveTime.current = now;
+         Therefore:
+
+         Three X ← astronomical X
+         Three Y ← astronomical Z
+         Three Z ← -astronomical Y
+
+         This keeps the ecliptic plane as the
+         horizontal X/Z plane of the 3D scene.
+         ====================================================== */
+
+      group.position.x =
+        astronomicalPosition.x *
+        visualScale;
+
+      group.position.y =
+        astronomicalPosition.z *
+        visualScale;
+
+      group.position.z =
+        -astronomicalPosition.y *
+        visualScale;
     }
 
     /* ========================================================
-       🌀 REAL AXIAL ROTATION
+       🧭 ABSOLUTE ASTRONOMICAL ROTATION
 
-       Uses each planet's real rotation period.
+       Rotation is no longer accumulated frame-by-frame.
 
-       Examples:
+       OLD:
 
-       Mercury ≈ 1407.6 hours
-       Venus   ≈ 5832 hours
-       Earth   ≈ 23.934 hours
-       Mars    ≈ 24.623 hours
-       Jupiter ≈ 9.925 hours
-       Saturn  ≈ 10.656 hours
-       Uranus  ≈ 17.24 hours
-       Neptune ≈ 16.11 hours
+       rotation +=
+         rotationSpeed × delta
 
-       Formula:
+       NEW:
 
-       rotationPeriodHours
-              ↓
-       rotationPeriodDays
-              ↓
-       rotations per simulation day
-              ↓
-       simulation days/sec
-              ↓
-       radians/sec
+       simulated Date
+             ↓
+       Julian Date
+             ↓
+       days since J2000
+             ↓
+       W = W0 + Wdot × d
+             ↓
+       absolute rotation phase
+             ↓
+       Three.js rotation
 
-       No visual speed multiplier is used.
+       This means the planet's orientation is tied
+       directly to the simulated astronomical date.
 
-       Therefore the relative rotation speed of every
-       planet remains physically correct.
+       Reloading the application on another real date
+       therefore produces another rotational phase.
        ======================================================== */
 
     const rotationGroup =
       rotationGroupRef.current;
 
-    if (
-      rotationGroup &&
-      planet.rotationPeriodHours > 0
-    ) {
-      /* ------------------------------------------------------
-         Convert real rotation period:
+    const axialTiltGroup =
+      axialTiltGroupRef.current;
 
-         hours → Earth days
+    if (rotationGroup) {
+      /* ======================================================
+         🌍 ABSOLUTE ROTATIONAL PHASE
+
+         W = W0 + Wdot × d
+
+         W0:
+         Planet rotation phase at J2000.0
+
+         Wdot:
+         Planet rotation rate in degrees/day
+
+         d:
+         Days since J2000.0
+
+         Venus and Uranus naturally receive
+         retrograde rotation because their
+         rotationRateDegPerDay values are negative.
+         ====================================================== */
+
+      const rotationPhaseRadians =
+        getPlanetRotationPhaseRadians(
+          planet,
+          simulationDate,
+        );
+
+      /* ======================================================
+         Apply the absolute astronomical phase.
+
+         IMPORTANT:
+
+         We do NOT use:
+
+         rotation += ...
+
+         anymore.
+
+         The current simulation date is the
+         single source of truth.
+         ====================================================== */
+
+      rotationGroup.rotation.y =
+        rotationPhaseRadians;
+    }
+
+    /* ========================================================
+       🧭 REAL AXIAL TILT
+
+       The planet's rotational axis is tilted relative
+       to the ecliptic reference plane.
+
+       Examples:
+
+       Earth:
+       ~23.44°
+
+       Mars:
+       ~25.19°
+
+       Uranus:
+       ~97.77°
+
+       Venus:
+       ~177.36°
+
+       The axial tilt is applied separately from
+       the planet's daily rotational phase.
+
+       This prevents the tilt from affecting the
+       Moon's orbital system.
+       ======================================================== */
+
+    if (axialTiltGroup) {
+      const axialTiltRadians =
+        getPlanetAxialTiltRadians(
+          planet,
+        );
+
+      /* ------------------------------------------------------
+         Three.js scene:
+
+         X = horizontal
+         Y = vertical
+         Z = depth
+
+         Therefore we tilt the planetary rotation
+         axis around the Z-axis.
+
+         The rotation group remains responsible for
+         the actual daily spin.
          ------------------------------------------------------ */
 
-      const rotationPeriodDays =
-        planet.rotationPeriodHours / 24;
-
-      /* ------------------------------------------------------
-         How many rotations happen during
-         one simulation Earth-day?
-         ------------------------------------------------------ */
-
-      const rotationsPerSimulationDay =
-        1 / rotationPeriodDays;
-
-      /* ------------------------------------------------------
-         Full rotation = 2π radians
-         ------------------------------------------------------ */
-
-      const rotationSpeed =
-        rotationsPerSimulationDay *
-        daysPerSecond *
-        Math.PI *
-        2;
-
-      /* ------------------------------------------------------
-         Real rotation direction
-
-         +1 = prograde
-         -1 = retrograde
-
-         Venus  = -1
-         Uranus = -1
-         ------------------------------------------------------ */
-
-      const rotationDirection =
-        planet.rotationDirection ?? 1;
-
-      rotationGroup.rotation.y +=
-        rotationSpeed *
-        delta *
-        rotationDirection;
+      axialTiltGroup.rotation.z =
+        axialTiltRadians;
     }
   });
-
-  /* ============================================================
-     💾 SAVE ORBIT POSITION ON UNMOUNT
-     ============================================================ */
-
-  useEffect(() => {
-    return () => {
-      if (
-        typeof window === "undefined"
-      ) {
-        return;
-      }
-
-      localStorage.setItem(
-        `solar-planet-angle-${planet.name}`,
-        orbitalAngle.current.toString(),
-      );
-    };
-  }, [planet.name]);
 
   /* ============================================================
      🎯 REGISTER PLANET REFERENCE
@@ -598,119 +623,136 @@ export const Planet = ({
       >
 
         {/* ====================================================
-            🌀 PLANET ROTATION GROUP
+            🧭 AXIAL TILT GROUP
 
-            ONLY the planet itself rotates.
+            Controls the real orientation of the
+            planetary rotational axis.
 
-            Moon remains outside this group.
+            This stays above the rotation group
+            so the planet rotates around its tilted axis.
         ==================================================== */}
 
         <group
-          ref={rotationGroupRef}
+          ref={axialTiltGroupRef}
         >
 
           {/* ==================================================
-              🌑 REAL SHADOW RECEIVER
+              🌀 PLANET ROTATION GROUP
+
+              Controls the absolute astronomical
+              rotational phase.
+
+              Moon remains outside this group.
           ================================================== */}
 
-          <PlanetShadowReceiver
-            radius={1}
-            opacity={0.20}
-            segments={64}
-          />
+          <group
+            ref={rotationGroupRef}
+          >
 
-          {/* ==================================================
-              🌍 EARTH
-          ================================================== */}
+            {/* ================================================
+                🌑 REAL SHADOW RECEIVER
+            ================================================= */}
 
-          {planet.name === "Earth" ? (
-            <group
-              onClick={handleClick}
-            >
-              <Earth />
-            </group>
+            <PlanetShadowReceiver
+              radius={1}
+              opacity={0.20}
+              segments={64}
+            />
 
-          ) : planet.name === "Mars" ? (
+            {/* ================================================
+                🌍 EARTH
+            ================================================= */}
 
-            <group
-              onClick={handleClick}
-            >
-              <Mars />
-            </group>
+            {planet.name === "Earth" ? (
+              <group
+                onClick={handleClick}
+              >
+                <Earth />
+              </group>
 
-          ) : planet.name === "Mercury" ? (
+            ) : planet.name === "Mars" ? (
 
-            <group
-              onClick={handleClick}
-            >
-              <Mercury />
-            </group>
+              <group
+                onClick={handleClick}
+              >
+                <Mars />
+              </group>
 
-          ) : planet.name === "Venus" ? (
+            ) : planet.name === "Mercury" ? (
 
-            <group
-              onClick={handleClick}
-            >
-              <Venus />
-            </group>
+              <group
+                onClick={handleClick}
+              >
+                <Mercury />
+              </group>
 
-          ) : planet.name === "Jupiter" ? (
+            ) : planet.name === "Venus" ? (
 
-            <group
-              onClick={handleClick}
-            >
-              <Jupiter />
-            </group>
+              <group
+                onClick={handleClick}
+              >
+                <Venus />
+              </group>
 
-          ) : planet.name === "Saturn" ? (
+            ) : planet.name === "Jupiter" ? (
 
-            <group
-              onClick={handleClick}
-            >
-              <Saturn />
-            </group>
+              <group
+                onClick={handleClick}
+              >
+                <Jupiter />
+              </group>
 
-          ) : planet.name === "Uranus" ? (
+            ) : planet.name === "Saturn" ? (
 
-            <group
-              onClick={handleClick}
-            >
-              <Uranus />
-            </group>
+              <group
+                onClick={handleClick}
+              >
+                <Saturn />
+              </group>
 
-          ) : planet.name === "Neptune" ? (
+            ) : planet.name === "Uranus" ? (
 
-            <group
-              onClick={handleClick}
-            >
-              <Neptune />
-            </group>
+              <group
+                onClick={handleClick}
+              >
+                <Uranus />
+              </group>
 
-          ) : (
+            ) : planet.name === "Neptune" ? (
 
-            <Sphere
-              onClick={handleClick}
-              args={[
-                planet.size * 1.05,
-                32,
-                32,
-              ]}
-              castShadow
-              receiveShadow
-            >
-              <meshBasicMaterial
-                color={
-                  planet.plasmaColors?.a ||
-                  "#ffffff"
-                }
-                transparent
-                opacity={0.15}
-                blending={
-                  THREE.AdditiveBlending
-                }
-              />
-            </Sphere>
-          )}
+              <group
+                onClick={handleClick}
+              >
+                <Neptune />
+              </group>
+
+            ) : (
+
+              <Sphere
+                onClick={handleClick}
+                args={[
+                  planet.size * 1.05,
+                  32,
+                  32,
+                ]}
+                castShadow
+                receiveShadow
+              >
+                <meshBasicMaterial
+                  color={
+                    planet.plasmaColors?.a ||
+                    "#ffffff"
+                  }
+                  transparent
+                  opacity={0.15}
+                  blending={
+                    THREE.AdditiveBlending
+                  }
+                />
+              </Sphere>
+            )}
+
+          </group>
 
         </group>
 
@@ -718,10 +760,10 @@ export const Planet = ({
             🌙 MOON SYSTEM
 
             Moon is intentionally OUTSIDE the
-            rotationGroupRef.
+            axial tilt + rotation hierarchy.
 
             Therefore planet axial rotation does not
-            rotate the Moon's orbital system.
+            directly rotate the Moon's orbital system.
         ==================================================== */}
 
         <group

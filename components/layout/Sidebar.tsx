@@ -38,14 +38,17 @@ export default function Sidebar({
       {/* Mobile Menu Toggle */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed top-4 left-4 z-50 md:hidden w-11 h-11 rounded-xl bg-black/70 backdrop-blur-md border border-white/10 flex items-center justify-center text-pink-400 hover:text-pink-300 transition-all"
+        className="fixed left-4 top-4 z-50 flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-black/70 text-pink-400 backdrop-blur-md transition-all hover:text-pink-300 md:hidden"
         aria-label="Toggle planet navigation"
       >
         {isOpen ? <X size={22} /> : <Menu size={22} />}
       </button>
 
       {/* Desktop Sidebar */}
-      <div className="hidden md:flex fixed left-0 top-0 h-full w-24 z-20 flex-col items-center py-4 gap-4">
+      <nav
+        aria-label="Planet navigation"
+        className="fixed left-0 top-0 z-20 hidden h-full w-28 flex-col items-center gap-3 py-4 md:flex"
+      >
         {planets.map((p) => {
           const isActive = selectedPlanet === p;
 
@@ -53,7 +56,8 @@ export default function Sidebar({
             <button
               key={p}
               onClick={() => onSelect(p)}
-              className={`rounded-md px-2 py-1 text-xs transition ${
+              aria-current={isActive ? "page" : undefined}
+              className={`min-h-10 min-w-10 rounded-md px-3 py-2 text-xs transition ${
                 isActive
                   ? "bg-pink-500/25 text-white ring-1 ring-pink-400/60"
                   : "text-pink-400 hover:text-pink-300"
@@ -63,11 +67,12 @@ export default function Sidebar({
             </button>
           );
         })}
-      </div>
+      </nav>
 
       {/* Mobile Sidebar */}
-      <div
-        className={`fixed left-0 top-0 h-full w-64 z-[55] bg-transparent backdrop-blur-xl border-r border-white/10 pt-5 px-6 transition-transform duration-300 md:hidden ${
+      <nav
+        aria-label="Mobile planet navigation"
+        className={`fixed left-0 top-0 z-[55] h-full w-64 border-r border-white/10 bg-transparent px-6 pt-5 backdrop-blur-xl transition-transform duration-300 md:hidden ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -104,7 +109,7 @@ export default function Sidebar({
             );
           })}
         </div>
-      </div>
+      </nav>
 
       {/* Mobile Overlay */}
       {isOpen && (

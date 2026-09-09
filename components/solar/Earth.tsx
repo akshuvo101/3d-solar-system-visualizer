@@ -3,42 +3,48 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
-type EarthProps = {
-    rotationSpeed?: number;
-};
+type EarthProps = {};
 
-export const Earth = ({
-    rotationSpeed = 0.12,
-}: EarthProps) => {
-    const earthRef = useRef<THREE.Mesh>(null);
+export const Earth = ({}: EarthProps) => {
     const cloudRef = useRef<THREE.Mesh>(null);
     const atmosphereRef = useRef<THREE.Mesh>(null);
 
     /*
      * ============================================================
-     * 🌍 EARTH SURFACE
+     * 🌍 EARTH SURFACE MATERIAL
+     *
+     * Important:
+     * - No UV based terrain noise
+     * - No animated surface noise
+     * - Uses local spherical direction
+     * - Prevents longitude/column artifacts
      * ============================================================
      */
 
     const earthMaterial = useMemo(() => {
         return new THREE.ShaderMaterial({
-            uniforms: {
-                uTime: {
-                    value: 0,
-                },
-            },
+            uniforms: {},
 
             vertexShader: `
-        varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vWorldPosition;
+        varying vec3 vLocalDirection;
 
         void main() {
 
-          vUv = uv;
+          /*
+           * Local spherical direction.
+           *
+           * This is the key fix for the previous
+           * vertical / column-wise artifacts.
+           *
+           * It does not depend on UV coordinates.
+           */
+          vLocalDirection =
+            normalize(position);
 
           /*
-           * Convert normal into world space.
+           * World-space normal for lighting.
            */
           vNormal =
             normalize(
@@ -46,7 +52,7 @@ export const Earth = ({
             );
 
           /*
-           * World-space position.
+           * World position for Sun direction.
            */
           vec4 worldPosition =
             modelMatrix *
@@ -63,117 +69,176 @@ export const Earth = ({
       `,
 
             fragmentShader: `
-        varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vWorldPosition;
-
-        uniform float uTime;
+        varying vec3 vLocalDirection;
 
         /*
-         * ========================================================
-         * RANDOM / NOISE
-         * ========================================================
+         * ==========================================================
+         * 🌐 STABLE 3D HASH
+         * ==========================================================
+         *
+         * Unlike the old UV noise, this works directly on the
+         * spherical surface.
+         *
+         * Therefore:
+         * - no UV seam
+         * - no vertical columns
+         * - no longitude stretching
          */
 
-        float hash(vec2 p) {
+        float hash31(vec3 p) {
+
+          p =
+            fract(
+              p * 0.1031
+            );
+
+          p +=
+            dot(
+              p,
+              p.yzx + 33.33
+            );
 
           return fract(
-            sin(
-              dot(
-                p,
-                vec2(
-                  127.1,
-                  311.7
-                )
-              )
-            ) *
-            43758.5453123
+            (p.x + p.y) * p.z
           );
         }
 
-        float noise(vec2 p) {
+        /*
+         * ==========================================================
+         * 🌊 3D VALUE NOISE
+         * ==========================================================
+         */
 
-          vec2 i =
+        float noise3D(vec3 p) {
+
+          vec3 i =
             floor(p);
 
-          vec2 f =
+          vec3 f =
             fract(p);
 
-          float a =
-            hash(i);
-
-          float b =
-            hash(
-              i +
-              vec2(
-                1.0,
-                0.0
-              )
-            );
-
-          float c =
-            hash(
-              i +
-              vec2(
-                0.0,
-                1.0
-              )
-            );
-
-          float d =
-            hash(
-              i +
-              vec2(
-                1.0,
-                1.0
-              )
-            );
-
-          vec2 u =
-            f *
-            f *
+          /*
+           * Smooth interpolation.
+           */
+          f =
+            f * f *
             (
               3.0 -
-              2.0 *
-              f
+              2.0 * f
+            );
+
+          float n000 =
+            hash31(
+              i + vec3(0.0, 0.0, 0.0)
+            );
+
+          float n100 =
+            hash31(
+              i + vec3(1.0, 0.0, 0.0)
+            );
+
+          float n010 =
+            hash31(
+              i + vec3(0.0, 1.0, 0.0)
+            );
+
+          float n110 =
+            hash31(
+              i + vec3(1.0, 1.0, 0.0)
+            );
+
+          float n001 =
+            hash31(
+              i + vec3(0.0, 0.0, 1.0)
+            );
+
+          float n101 =
+            hash31(
+              i + vec3(1.0, 0.0, 1.0)
+            );
+
+          float n011 =
+            hash31(
+              i + vec3(0.0, 1.0, 1.0)
+            );
+
+          float n111 =
+            hash31(
+              i + vec3(1.0, 1.0, 1.0)
+            );
+
+          float nx00 =
+            mix(
+              n000,
+              n100,
+              f.x
+            );
+
+          float nx10 =
+            mix(
+              n010,
+              n110,
+              f.x
+            );
+
+          float nx01 =
+            mix(
+              n001,
+              n101,
+              f.x
+            );
+
+          float nx11 =
+            mix(
+              n011,
+              n111,
+              f.x
+            );
+
+          float nxy0 =
+            mix(
+              nx00,
+              nx10,
+              f.y
+            );
+
+          float nxy1 =
+            mix(
+              nx01,
+              nx11,
+              f.y
             );
 
           return mix(
-            a,
-            b,
-            u.x
-          )
-          +
-          (
-            c -
-            a
-          ) *
-          u.y *
-          (
-            1.0 -
-            u.x
-          )
-          +
-          (
-            d -
-            b
-          ) *
-          u.x *
-          u.y;
+            nxy0,
+            nxy1,
+            f.z
+          );
         }
 
-        float fbm(vec2 p) {
+        /*
+         * ==========================================================
+         * 🌎 FRACTAL BROWNIAN MOTION
+         * ==========================================================
+         *
+         * Kept deliberately low-frequency.
+         *
+         * High frequency FBM was one of the reasons the surface
+         * could visually shimmer.
+         */
 
-          float value =
-            0.0;
+        float fbm(vec3 p) {
 
-          float amplitude =
-            0.5;
+          float value = 0.0;
 
-          for(int i = 0; i < 5; i++) {
+          float amplitude = 0.5;
+
+          for(int i = 0; i < 4; i++) {
 
             value +=
-              noise(p) *
+              noise3D(p) *
               amplitude;
 
             p *= 2.0;
@@ -184,220 +249,437 @@ export const Earth = ({
           return value;
         }
 
+        /*
+         * ==========================================================
+         * 🌍 MAIN
+         * ==========================================================
+         */
+
         void main() {
 
-          vec2 uv =
-            vUv;
+          /*
+           * Normalized spherical coordinate.
+           */
+          vec3 direction =
+            normalize(
+              vLocalDirection
+            );
 
           /*
-           * ======================================================
-           * 🌊 OCEAN
-           * ======================================================
+           * ========================================================
+           * 🗺️ CONTINENT MASK
+           * ========================================================
+           *
+           * Large-scale noise creates broad land masses.
+           *
+           * Threshold is deliberately conservative so Earth
+           * remains ocean-dominant.
            */
 
-          vec3 oceanDeep =
+          float continentBase =
+            fbm(
+              direction * 1.65
+            );
+
+          float continentDetail =
+            fbm(
+              direction * 3.2 +
+              vec3(
+                17.2,
+                4.7,
+                9.1
+              )
+            );
+
+          float continentShape =
+            continentBase * 0.78 +
+            continentDetail * 0.22;
+
+          /*
+           * Conservative land threshold.
+           *
+           * This prevents the "green planet" look.
+           */
+          float land =
+            smoothstep(
+              0.555,
+              0.625,
+              continentShape
+            );
+
+          /*
+           * ========================================================
+           * 🌊 OCEAN
+           * ========================================================
+           */
+
+          vec3 deepOcean =
             vec3(
-              0.004,
-              0.025,
-              0.085
+              0.002,
+              0.018,
+              0.060
             );
 
           vec3 ocean =
             vec3(
-              0.008,
-              0.12,
-              0.30
+              0.004,
+              0.055,
+              0.145
             );
 
-          vec3 oceanLight =
+          vec3 shallowOcean =
             vec3(
-              0.025,
-              0.30,
-              0.55
+              0.012,
+              0.125,
+              0.255
             );
 
-          float oceanNoise =
+          /*
+           * Subtle ocean variation.
+           *
+           * Low frequency only.
+           */
+          float oceanVariation =
             fbm(
-              uv *
-              8.0
+              direction * 5.0 +
+              vec3(
+                2.0,
+                8.0,
+                3.0
+              )
             );
 
-          vec3 surface =
+          vec3 oceanColor =
             mix(
-              oceanDeep,
+              deepOcean,
               ocean,
-              oceanNoise
-            );
-
-          surface =
-            mix(
-              surface,
-              oceanLight,
               smoothstep(
-                0.63,
+                0.28,
+                0.70,
+                oceanVariation
+              )
+            );
+
+          oceanColor =
+            mix(
+              oceanColor,
+              shallowOcean,
+              smoothstep(
+                0.68,
                 0.90,
-                oceanNoise
-              )
+                oceanVariation
+              ) *
+              0.35
             );
 
           /*
-           * ======================================================
-           * 🌎 CONTINENTS
-           * ======================================================
+           * ========================================================
+           * 🏔️ LAND ELEVATION
+           * ========================================================
            */
 
-          float continentNoise =
+          float terrain =
             fbm(
-              uv *
-              3.8 +
-              vec2(
-                4.0,
-                1.5
+              direction * 5.5 +
+              vec3(
+                11.0,
+                3.0,
+                19.0
               )
             );
 
-          float land =
+          /*
+           * Mountain / rocky mask.
+           */
+          float mountain =
             smoothstep(
-              0.53,
-              0.62,
-              continentNoise
+              0.66,
+              0.84,
+              terrain
             );
 
           /*
-           * Forest.
+           * ========================================================
+           * 🌡️ LATITUDE / CLIMATE
+           * ========================================================
            */
+
+          float latitude =
+            abs(
+              direction.y
+            );
+
+          /*
+           * Tropical zone.
+           *
+           * Green is limited mostly to warmer + wetter regions.
+           */
+          float tropical =
+            1.0 -
+            smoothstep(
+              0.18,
+              0.72,
+              latitude
+            );
+
+          /*
+           * ========================================================
+           * 💧 MOISTURE
+           * ========================================================
+           */
+
+          float moisture =
+            fbm(
+              direction * 4.2 +
+              vec3(
+                31.0,
+                7.0,
+                13.0
+              )
+            );
+
+          /*
+           * ========================================================
+           * 🏜️ DESERT
+           * ========================================================
+           */
+
+          float dryRegion =
+            smoothstep(
+              0.54,
+              0.73,
+              1.0 - moisture
+            );
+
+          /*
+           * Keep deserts mostly in warmer latitudes.
+           */
+          float desert =
+            dryRegion *
+            smoothstep(
+              0.05,
+              0.35,
+              1.0 - latitude
+            ) *
+            (1.0 - mountain * 0.65);
+
+          /*
+           * ========================================================
+           * 🌲 FOREST / VEGETATION
+           * ========================================================
+           *
+           * Forest is intentionally restrained.
+           */
+
+          float vegetation =
+            smoothstep(
+              0.40,
+              0.70,
+              moisture
+            ) *
+            smoothstep(
+              0.18,
+              0.78,
+              tropical
+            ) *
+            (1.0 - desert);
+
+          /*
+           * ========================================================
+           * 🪨 ROCK
+           * ========================================================
+           */
+
+          vec3 rock =
+            vec3(
+              0.27,
+              0.26,
+              0.22
+            );
+
+          vec3 rockLight =
+            vec3(
+              0.42,
+              0.39,
+              0.31
+            );
+
+          vec3 landRock =
+            mix(
+              rock,
+              rockLight,
+              smoothstep(
+                0.48,
+                0.82,
+                terrain
+              )
+            );
+
+          /*
+           * ========================================================
+           * 🟫 DESERT COLOR
+           * ========================================================
+           */
+
+          vec3 desertColor =
+            vec3(
+              0.55,
+              0.36,
+              0.16
+            );
+
+          /*
+           * Slight sand highlight.
+           */
+          desertColor =
+            mix(
+              desertColor,
+              vec3(
+                0.72,
+                0.54,
+                0.30
+              ),
+              smoothstep(
+                0.58,
+                0.82,
+                terrain
+              ) *
+              0.35
+            );
+
+          /*
+           * ========================================================
+           * 🌿 VEGETATION COLORS
+           * ========================================================
+           */
+
+          vec3 grassland =
+            vec3(
+              0.20,
+              0.30,
+              0.095
+            );
 
           vec3 forest =
             vec3(
-              0.018,
-              0.145,
-              0.035
+              0.045,
+              0.18,
+              0.055
             );
 
           /*
-           * Vegetation.
+           * Forest is darker and less saturated.
            */
-
-          vec3 vegetation =
-            vec3(
-              0.055,
-              0.29,
-              0.065
-            );
-
-          /*
-           * Desert.
-           */
-
-          vec3 desert =
-            vec3(
-              0.42,
-              0.275,
-              0.105
-            );
-
-          vec3 landColor =
+          vec3 vegetationColor =
             mix(
+              grassland,
               forest,
-              vegetation,
-              noise(
-                uv *
-                18.0
+              smoothstep(
+                0.58,
+                0.82,
+                moisture
               )
             );
 
+          /*
+           * ========================================================
+           * 🌍 FINAL LAND COLOR
+           * ========================================================
+           */
+
+          vec3 landColor =
+            landRock;
+
+          /*
+           * Add vegetation.
+           */
           landColor =
             mix(
               landColor,
-              desert,
-              smoothstep(
-                0.68,
-                0.85,
-                noise(
-                  uv *
-                  7.0
-                )
+              vegetationColor,
+              vegetation * 0.72
+            );
+
+          /*
+           * Add desert.
+           */
+          landColor =
+            mix(
+              landColor,
+              desertColor,
+              desert * 0.88
+            );
+
+          /*
+           * ========================================================
+           * 🧊 POLAR ICE
+           * ========================================================
+           */
+
+          float polarIce =
+            smoothstep(
+              0.78,
+              0.96,
+              latitude
+            );
+
+          /*
+           * Ice slightly varies naturally.
+           */
+          float iceVariation =
+            fbm(
+              direction * 7.0 +
+              vec3(
+                4.0,
+                15.0,
+                2.0
               )
             );
 
-          /*
-           * Small terrain variation.
-           */
-
-          landColor +=
-            (
-              noise(
-                uv *
-                35.0
-              ) -
-              0.5
-            ) *
-            0.025;
-
-          surface =
-            mix(
-              surface,
-              landColor,
-              land
-            );
-
-          /*
-           * ======================================================
-           * 🧊 POLAR ICE
-           * ======================================================
-           */
-
-          float polar =
+          float iceMask =
+            polarIce *
             smoothstep(
-              0.84,
-              0.98,
-              abs(
-                uv.y -
-                0.5
-              ) *
-              2.0
+              0.34,
+              0.70,
+              iceVariation
             );
 
           vec3 ice =
             vec3(
               0.78,
               0.89,
-              0.98
+              0.96
             );
 
+          /*
+           * ========================================================
+           * 🌊 + 🌎 COMBINE SURFACE
+           * ========================================================
+           */
+
+          vec3 surface =
+            mix(
+              oceanColor,
+              landColor,
+              land
+            );
+
+          /*
+           * Ice should dominate both land and polar ocean.
+           */
           surface =
             mix(
               surface,
               ice,
-              polar *
-              0.82
+              iceMask * 0.90
             );
 
           /*
-           * ======================================================
-           * ✨ MICRO SURFACE DETAIL
-           * ======================================================
-           */
-
-          float detail =
-            noise(
-              uv *
-              55.0
-            );
-
-          surface +=
-            (
-              detail -
-              0.5
-            ) *
-            0.018;
-
-          /*
-           * ======================================================
-           * ☀️ REAL SUN LIGHT
-           * ======================================================
+           * ========================================================
+           * ☀️ SUN LIGHT
+           * ========================================================
            *
-           * Sun is positioned at world origin.
+           * Sun is at the world origin.
            */
 
           vec3 normal =
@@ -423,46 +705,42 @@ export const Earth = ({
             );
 
           /*
-           * ======================================================
-           * 🌅 DAY / TWILIGHT / NIGHT
-           * ======================================================
-           */
-
-          /*
-           * Harder daylight boundary.
+           * ========================================================
+           * 🌅 DAY / NIGHT
+           * ========================================================
            */
 
           float day =
             smoothstep(
-              0.02,
-              0.45,
+              0.015,
+              0.32,
               diffuse
             );
-
-          /*
-           * Twilight band.
-           */
 
           float twilight =
             smoothstep(
               -0.12,
-              0.22,
+              0.20,
               NdotL
             )
             *
             (
               1.0 -
               smoothstep(
-                0.18,
+                0.16,
                 0.42,
                 NdotL
               )
             );
 
+          float night =
+            1.0 -
+            day;
+
           /*
-           * ======================================================
-           * 🌞 DAYLIGHT
-           * ======================================================
+           * ========================================================
+           * ☀️ DAYLIGHT
+           * ========================================================
            */
 
           float daylight =
@@ -471,23 +749,17 @@ export const Earth = ({
               0.72
             );
 
-          /*
-           * Base daylight illumination.
-           */
-
           float dayIntensity =
-            0.16 +
+            0.18 +
             daylight *
-            1.08;
+            1.04;
 
           surface *=
             dayIntensity;
 
           /*
-           * Slight warm solar response
-           * on the fully illuminated side.
+           * Slight solar warmth.
            */
-
           vec3 sunlightTint =
             vec3(
               1.0,
@@ -500,72 +772,57 @@ export const Earth = ({
               surface,
               surface *
               sunlightTint,
-              day *
-              0.16
+              day * 0.10
             );
 
           /*
-           * ======================================================
+           * ========================================================
            * 🌅 TWILIGHT
-           * ======================================================
-           *
-           * Subtle warm atmospheric transition.
+           * ========================================================
            */
 
           vec3 twilightColor =
             vec3(
-              0.34,
-              0.17,
-              0.07
+              0.38,
+              0.15,
+              0.045
             );
 
           surface +=
             twilightColor *
             twilight *
-            0.035;
+            0.045;
 
           /*
-           * ======================================================
+           * ========================================================
            * 🌑 NIGHT SIDE
-           * ======================================================
-           */
-
-          float night =
-            1.0 -
-            day;
-
-          /*
-           * Keep night side genuinely dark.
+           * ========================================================
+           *
+           * Keep the night side dark but still recognizable.
            */
 
           surface *=
-            0.32 +
-            day *
-            0.68;
+            0.26 +
+            day * 0.74;
 
           /*
-           * Very subtle blue ambient
-           * from Earth's atmosphere.
+           * Very subtle blue atmospheric ambient.
            */
-
-          vec3 nightBlue =
+          surface +=
             vec3(
               0.002,
-              0.006,
-              0.018
-            );
-
-          surface +=
-            nightBlue *
-            night *
-            0.55;
+              0.007,
+              0.020
+            )
+            *
+            night
+            *
+            0.42;
 
           /*
-           * ======================================================
+           * ========================================================
            * 🌊 OCEAN NIGHT RESPONSE
-           * ======================================================
-           *
-           * Deepens oceans on the dark hemisphere.
+           * ========================================================
            */
 
           float oceanMask =
@@ -577,13 +834,16 @@ export const Earth = ({
             (
               oceanMask *
               night *
-              0.16
+              0.12
             );
 
           /*
-           * ======================================================
-           * ✨ FINAL CONTRAST
-           * ======================================================
+           * ========================================================
+           * ✨ FINAL STABILITY
+           * ========================================================
+           *
+           * No high-frequency animated detail.
+           * This helps eliminate shimmer/flicker.
            */
 
           surface =
@@ -608,29 +868,40 @@ export const Earth = ({
 
     /*
      * ============================================================
-     * ☁️ CLOUD SHADER
+     * ☁️ CLOUD MATERIAL
+     *
+     * Static spherical cloud pattern.
+     *
+     * The mesh itself rotates slowly, so the shader does not need
+     * animated noise. This removes crawling/flickering artifacts.
      * ============================================================
      */
 
     const cloudMaterial = useMemo(() => {
         return new THREE.ShaderMaterial({
             transparent: true,
+
+            /*
+             * Clouds don't write depth.
+             * This avoids hard depth conflicts with the Earth.
+             */
             depthWrite: false,
 
-            uniforms: {
-                uTime: {
-                    value: 0,
-                },
-            },
+            depthTest: true,
+
+            side: THREE.FrontSide,
+
+            uniforms: {},
 
             vertexShader: `
-        varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vWorldPosition;
+        varying vec3 vLocalDirection;
 
         void main() {
 
-          vUv = uv;
+          vLocalDirection =
+            normalize(position);
 
           vNormal =
             normalize(
@@ -659,142 +930,243 @@ export const Earth = ({
       `,
 
             fragmentShader: `
-        varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vWorldPosition;
+        varying vec3 vLocalDirection;
 
-        uniform float uTime;
+        /*
+         * ==========================================================
+         * CLOUD HASH
+         * ==========================================================
+         */
 
-        float hash(vec2 p) {
+        float hash31(vec3 p) {
+
+          p =
+            fract(
+              p * 0.1031
+            );
+
+          p +=
+            dot(
+              p,
+              p.yzx + 33.33
+            );
 
           return fract(
-            sin(
-              dot(
-                p,
-                vec2(
-                  127.1,
-                  311.7
-                )
-              )
-            ) *
-            43758.5453
+            (p.x + p.y) * p.z
           );
         }
 
-        float noise(vec2 p) {
+        /*
+         * ==========================================================
+         * CLOUD NOISE
+         * ==========================================================
+         */
 
-          vec2 i =
+        float noise3D(vec3 p) {
+
+          vec3 i =
             floor(p);
 
-          vec2 f =
+          vec3 f =
             fract(p);
 
-          float a =
-            hash(i);
-
-          float b =
-            hash(
-              i +
-              vec2(
-                1.0,
-                0.0
-              )
-            );
-
-          float c =
-            hash(
-              i +
-              vec2(
-                0.0,
-                1.0
-              )
-            );
-
-          float d =
-            hash(
-              i +
-              vec2(
-                1.0,
-                1.0
-              )
-            );
-
-          vec2 u =
-            f *
-            f *
+          f =
+            f * f *
             (
               3.0 -
-              2.0 *
-              f
+              2.0 * f
+            );
+
+          float n000 =
+            hash31(
+              i
+            );
+
+          float n100 =
+            hash31(
+              i + vec3(1.0, 0.0, 0.0)
+            );
+
+          float n010 =
+            hash31(
+              i + vec3(0.0, 1.0, 0.0)
+            );
+
+          float n110 =
+            hash31(
+              i + vec3(1.0, 1.0, 0.0)
+            );
+
+          float n001 =
+            hash31(
+              i + vec3(0.0, 0.0, 1.0)
+            );
+
+          float n101 =
+            hash31(
+              i + vec3(1.0, 0.0, 1.0)
+            );
+
+          float n011 =
+            hash31(
+              i + vec3(0.0, 1.0, 1.0)
+            );
+
+          float n111 =
+            hash31(
+              i + vec3(1.0, 1.0, 1.0)
+            );
+
+          float nx00 =
+            mix(
+              n000,
+              n100,
+              f.x
+            );
+
+          float nx10 =
+            mix(
+              n010,
+              n110,
+              f.x
+            );
+
+          float nx01 =
+            mix(
+              n001,
+              n101,
+              f.x
+            );
+
+          float nx11 =
+            mix(
+              n011,
+              n111,
+              f.x
+            );
+
+          float nxy0 =
+            mix(
+              nx00,
+              nx10,
+              f.y
+            );
+
+          float nxy1 =
+            mix(
+              nx01,
+              nx11,
+              f.y
             );
 
           return mix(
-            a,
-            b,
-            u.x
-          )
-          +
-          (
-            c -
-            a
-          ) *
-          u.y *
-          (
-            1.0 -
-            u.x
-          )
-          +
-          (
-            d -
-            b
-          ) *
-          u.x *
-          u.y;
+            nxy0,
+            nxy1,
+            f.z
+          );
+        }
+
+        /*
+         * ==========================================================
+         * CLOUD FBM
+         * ==========================================================
+         */
+
+        float cloudFbm(vec3 p) {
+
+          float value = 0.0;
+
+          float amplitude = 0.5;
+
+          for(int i = 0; i < 3; i++) {
+
+            value +=
+              noise3D(p) *
+              amplitude;
+
+            p *= 2.0;
+
+            amplitude *= 0.5;
+          }
+
+          return value;
         }
 
         void main() {
 
-          vec2 uv =
-            vUv +
-            vec2(
-              uTime *
-              0.006,
-              0.0
+          vec3 direction =
+            normalize(
+              vLocalDirection
             );
 
           /*
-           * Multi-scale clouds.
+           * Large cloud formations.
            */
-
-          float clouds =
-            noise(
-              uv *
-              7.0
+          float largeClouds =
+            cloudFbm(
+              direction * 2.7 +
+              vec3(
+                7.0,
+                2.0,
+                11.0
+              )
             );
 
-          clouds +=
-            noise(
-              uv *
-              14.0
-            ) *
-            0.45;
+          /*
+           * Secondary detail.
+           */
+          float cloudDetail =
+            noise3D(
+              direction * 7.0 +
+              vec3(
+                12.0,
+                4.0,
+                8.0
+              )
+            );
 
-          clouds +=
-            noise(
-              uv *
-              28.0
-            ) *
-            0.15;
+          float clouds =
+            largeClouds * 0.82 +
+            cloudDetail * 0.18;
 
+          /*
+           * Soft cloud threshold.
+           *
+           * Avoid very thin noisy pixels.
+           */
           clouds =
             smoothstep(
-              0.55,
-              0.73,
+              0.48,
+              0.67,
               clouds
             );
 
           /*
-           * Sun direction.
+           * Slightly reduce clouds near poles.
+           */
+          float latitude =
+            abs(
+              direction.y
+            );
+
+          float polarReduction =
+            smoothstep(
+              0.70,
+              0.96,
+              latitude
+            );
+
+          clouds *=
+            1.0 -
+            polarReduction *
+            0.20;
+
+          /*
+           * ========================================================
+           * ☀️ CLOUD LIGHTING
+           * ========================================================
            */
 
           vec3 normal =
@@ -817,30 +1189,31 @@ export const Earth = ({
             );
 
           /*
-           * Clouds are bright on day side
-           * and significantly darker at night.
+           * Clouds are bright on the day side.
            */
-
           float cloudLight =
-            0.08 +
+            0.10 +
             pow(
               sunlight,
-              0.7
+              0.72
             ) *
-            0.92;
+            0.90;
 
+          /*
+           * Cloud colors.
+           */
           vec3 cloudDay =
             vec3(
               0.92,
-              0.97,
+              0.965,
               1.0
             );
 
           vec3 cloudNight =
             vec3(
-              0.035,
-              0.055,
-              0.085
+              0.018,
+              0.032,
+              0.060
             );
 
           vec3 cloudColor =
@@ -848,18 +1221,16 @@ export const Earth = ({
               cloudNight,
               cloudDay,
               smoothstep(
-                0.04,
-                0.45,
+                0.025,
+                0.40,
                 sunlight
               )
             );
 
           /*
-           * Slight silver highlight
-           * around illuminated clouds.
+           * Subtle silver edge highlight.
            */
-
-          float cloudHighlight =
+          float highlight =
             pow(
               sunlight,
               3.0
@@ -867,17 +1238,34 @@ export const Earth = ({
 
           cloudColor +=
             vec3(
-              0.06,
-              0.07,
-              0.08
-            ) *
-            cloudHighlight;
+              0.055,
+              0.065,
+              0.075
+            )
+            *
+            highlight;
+
+          /*
+           * Final opacity.
+           *
+           * Kept controlled so clouds don't hide the continents.
+           */
+          float alpha =
+            clouds *
+            0.30 *
+            cloudLight;
+
+          /*
+           * Remove extremely weak fragments.
+           */
+          if(alpha < 0.008) {
+            discard;
+          }
 
           gl_FragColor =
             vec4(
               cloudColor,
-              clouds *
-              0.34
+              alpha
             );
         }
       `,
@@ -886,7 +1274,7 @@ export const Earth = ({
 
     /*
      * ============================================================
-     * 🌫️ PREMIUM ATMOSPHERE
+     * 🌫️ ATMOSPHERE
      * ============================================================
      */
 
@@ -901,20 +1289,22 @@ export const Earth = ({
 
             depthWrite: false,
 
+            depthTest: true,
+
             uniforms: {
                 glowColor: {
                     value:
                         new THREE.Color(
-                            "#3d9cff"
+                            "#3b9dff",
                         ),
                 },
 
                 intensity: {
-                    value: 0.30,
+                    value: 0.25,
                 },
 
                 power: {
-                    value: 4.8,
+                    value: 4.2,
                 },
             },
 
@@ -941,13 +1331,6 @@ export const Earth = ({
               normal
             );
 
-          vec4 mvPosition =
-            modelViewMatrix *
-            vec4(
-              position,
-              1.0
-            );
-
           vViewDir =
             normalize(
               cameraPosition -
@@ -956,7 +1339,11 @@ export const Earth = ({
 
           gl_Position =
             projectionMatrix *
-            mvPosition;
+            modelViewMatrix *
+            vec4(
+              position,
+              1.0
+            );
         }
       `,
 
@@ -982,9 +1369,9 @@ export const Earth = ({
             );
 
           /*
-           * ------------------------------------------------------
-           * Edge / Fresnel
-           * ------------------------------------------------------
+           * ========================================================
+           * ✨ FRESNEL EDGE
+           * ========================================================
            */
 
           float viewDot =
@@ -1004,9 +1391,9 @@ export const Earth = ({
             );
 
           /*
-           * ------------------------------------------------------
-           * ☀️ Sun-facing atmospheric scattering
-           * ------------------------------------------------------
+           * ========================================================
+           * ☀️ SUN SCATTER
+           * ========================================================
            */
 
           vec3 earthToSun =
@@ -1023,46 +1410,46 @@ export const Earth = ({
               0.0
             );
 
-          /*
-           * Atmosphere is strongest
-           * around illuminated limb.
-           */
-
           float sunScatter =
             pow(
               sunLight,
-              0.55
+              0.58
             );
 
           /*
-           * Keep night-side atmosphere
-           * extremely subtle.
+           * Stronger blue around illuminated limb.
            */
-
-          float nightScatter =
+          float illuminatedRim =
             fresnel *
-            0.16;
+            sunScatter;
+
+          /*
+           * Very subtle night-side glow.
+           */
+          float nightGlow =
+            fresnel *
+            0.11;
 
           float finalGlow =
             (
               fresnel *
-              0.72 +
-              sunScatter *
-              fresnel *
-              0.55 +
-              nightScatter
-            ) *
+              0.68
+              +
+              illuminatedRim *
+              0.72
+              +
+              nightGlow
+            )
+            *
             intensity;
 
           /*
-           * Reduce blue shell toward
-           * the center of the planet.
+           * Keep center transparent.
            */
-
           finalGlow =
             smoothstep(
-              0.035,
-              0.72,
+              0.015,
+              0.64,
               finalGlow
             );
 
@@ -1079,74 +1466,57 @@ export const Earth = ({
     /*
      * ============================================================
      * 🌀 ANIMATION
+     *
+     * IMPORTANT:
+     *
+     * Earth itself is NOT rotated here.
+     *
+     * Planet.tsx controls the absolute astronomical rotation.
+     *
+     * Only clouds have a very slow independent atmospheric motion.
      * ============================================================
      */
 
     useFrame(
         ({ clock }, delta) => {
-            const time =
-                clock.getElapsedTime();
-
             /*
-             * 🌍 Earth rotation.
+             * ☁️ Very slow cloud drift.
+             *
+             * This is intentionally independent from Earth rotation.
+             *
+             * The old version used:
+             *
+             * rotationSpeed * 1.12
+             *
+             * which could fight with the Planet rotation system.
              */
-
-            if (earthRef.current) {
-                earthRef.current.rotation.y +=
-                    delta *
-                    rotationSpeed;
-            }
-
-            /*
-             * ☁️ Cloud rotation.
-             */
-
             if (cloudRef.current) {
                 cloudRef.current.rotation.y +=
-                    delta *
-                    rotationSpeed *
-                    1.12;
+                    delta * 0.006;
             }
 
             /*
-             * 🌫️ Very subtle atmospheric motion.
+             * 🌫️ Atmosphere remains static.
+             *
+             * No pulsing scale.
+             *
+             * This removes subtle edge jitter caused by constantly
+             * changing the shell size.
              */
-
             if (atmosphereRef.current) {
-                const pulse =
-                    1 +
-                    Math.sin(
-                        time *
-                        0.8
-                    ) *
-                    0.002;
-
-                atmosphereRef.current.scale.setScalar(
-                    pulse
-                );
+                atmosphereRef.current.rotation.y +=
+                    delta * 0.0004;
             }
-
-            /*
-             * Shader time.
-             */
-
-            earthMaterial.uniforms.uTime.value =
-                time;
-
-            cloudMaterial.uniforms.uTime.value =
-                time;
-        }
+        },
     );
 
     return (
         <group>
-
             {/* ======================================================
                 🌍 EARTH SURFACE
                 ====================================================== */}
 
             <Sphere
-                ref={earthRef}
                 args={[
                     1,
                     64,
@@ -1204,7 +1574,6 @@ export const Earth = ({
                     attach="material"
                 />
             </Sphere>
-
         </group>
     );
 };

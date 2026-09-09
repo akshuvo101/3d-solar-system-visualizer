@@ -3,42 +3,49 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
-type MercuryProps = {
-  rotationSpeed?: number;
-};
-
-export const Mercury = ({
-  rotationSpeed = 0.045,
-}: MercuryProps) => {
-  const mercuryRef = useRef<THREE.Mesh>(null);
-  const atmosphereRef = useRef<THREE.Mesh>(null);
+export const Mercury = () => {
+  const atmosphereRef =
+    useRef<THREE.Mesh>(null);
 
   /*
    * ============================================================
    * ☿ MERCURY SURFACE SHADER
    * ============================================================
+   *
+   * IMPORTANT:
+   * The surface is generated from 3D spherical coordinates
+   * instead of UV coordinates.
+   *
+   * This prevents:
+   * - vertical UV seams
+   * - column-like patterns
+   * - stretched crater lines
+   * - visible texture repetition at the longitude seam
    */
 
   const mercuryMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
-        uTime: {
-          value: 0,
-        },
-
         uSunPosition: {
           value: new THREE.Vector3(0, 0, 0),
         },
       },
 
       vertexShader: `
-        varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vWorldPosition;
+        varying vec3 vLocalDirection;
 
         void main() {
 
-          vUv = uv;
+          /*
+           * Use the sphere's local direction as the
+           * procedural texture coordinate.
+           *
+           * Unlike UVs, this has no longitude seam.
+           */
+          vLocalDirection =
+            normalize(position);
 
           vec4 worldPosition =
             modelMatrix *
@@ -67,103 +74,65 @@ export const Mercury = ({
       `,
 
       fragmentShader: `
-        varying vec2 vUv;
         varying vec3 vNormal;
         varying vec3 vWorldPosition;
+        varying vec3 vLocalDirection;
 
-        uniform float uTime;
         uniform vec3 uSunPosition;
-
-        /*
-         * ======================================================
-         * HASH
-         * ======================================================
-         */
-
-        float hash(vec2 p) {
-
-          return fract(
-            sin(
-              dot(
-                p,
-                vec2(
-                  127.1,
-                  311.7
-                )
-              )
-            ) *
-            43758.5453123
-          );
-        }
 
         /*
          * ======================================================
          * HASH 3D
          * ======================================================
+         *
+         * Deterministic pseudo-random value.
+         *
+         * This replaces the old 2D UV hash and allows
+         * completely spherical procedural detail.
          */
 
         float hash3(vec3 p) {
 
-          return fract(
-            sin(
-              dot(
-                p,
-                vec3(
-                  127.1,
-                  311.7,
-                  74.7
-                )
+          p =
+            fract(
+              p * 0.3183099
+              + vec3(
+                0.1,
+                0.2,
+                0.3
               )
-            ) *
-            43758.5453123
+            );
+
+          p *=
+            17.0;
+
+          return fract(
+            p.x *
+            p.y *
+            p.z *
+            (
+              p.x +
+              p.y +
+              p.z
+            )
           );
         }
 
         /*
          * ======================================================
-         * VALUE NOISE
+         * 3D VALUE NOISE
          * ======================================================
          */
 
-        float noise(vec2 p) {
+        float noise3(vec3 p) {
 
-          vec2 i =
+          vec3 i =
             floor(p);
 
-          vec2 f =
+          vec3 f =
             fract(p);
 
-          float a =
-            hash(i);
-
-          float b =
-            hash(
-              i +
-              vec2(
-                1.0,
-                0.0
-              )
-            );
-
-          float c =
-            hash(
-              i +
-              vec2(
-                0.0,
-                1.0
-              )
-            );
-
-          float d =
-            hash(
-              i +
-              vec2(
-                1.0,
-                1.0
-              )
-            );
-
-          vec2 u =
+          f =
             f *
             f *
             (
@@ -172,50 +141,164 @@ export const Mercury = ({
               f
             );
 
+          float n000 =
+            hash3(
+              i +
+              vec3(
+                0.0,
+                0.0,
+                0.0
+              )
+            );
+
+          float n100 =
+            hash3(
+              i +
+              vec3(
+                1.0,
+                0.0,
+                0.0
+              )
+            );
+
+          float n010 =
+            hash3(
+              i +
+              vec3(
+                0.0,
+                1.0,
+                0.0
+              )
+            );
+
+          float n110 =
+            hash3(
+              i +
+              vec3(
+                1.0,
+                1.0,
+                0.0
+              )
+            );
+
+          float n001 =
+            hash3(
+              i +
+              vec3(
+                0.0,
+                0.0,
+                1.0
+              )
+            );
+
+          float n101 =
+            hash3(
+              i +
+              vec3(
+                1.0,
+                0.0,
+                1.0
+              )
+            );
+
+          float n011 =
+            hash3(
+              i +
+              vec3(
+                0.0,
+                1.0,
+                1.0
+              )
+            );
+
+          float n111 =
+            hash3(
+              i +
+              vec3(
+                1.0,
+                1.0,
+                1.0
+              )
+            );
+
+          float nx00 =
+            mix(
+              n000,
+              n100,
+              f.x
+            );
+
+          float nx10 =
+            mix(
+              n010,
+              n110,
+              f.x
+            );
+
+          float nx01 =
+            mix(
+              n001,
+              n101,
+              f.x
+            );
+
+          float nx11 =
+            mix(
+              n011,
+              n111,
+              f.x
+            );
+
+          float nxy0 =
+            mix(
+              nx00,
+              nx10,
+              f.y
+            );
+
+          float nxy1 =
+            mix(
+              nx01,
+              nx11,
+              f.y
+            );
+
           return mix(
-            a,
-            b,
-            u.x
-          )
-          +
-          (
-            c -
-            a
-          ) *
-          u.y *
-          (
-            1.0 -
-            u.x
-          )
-          +
-          (
-            d -
-            b
-          ) *
-          u.x *
-          u.y;
+            nxy0,
+            nxy1,
+            f.z
+          );
         }
 
         /*
          * ======================================================
-         * FBM
+         * SPHERICAL FBM
          * ======================================================
          */
 
-        float fbm(vec2 p) {
+        float fbm3(vec3 p) {
 
-          float value = 0.0;
-          float amplitude = 0.5;
+          float value =
+            0.0;
 
-          for(int i = 0; i < 6; i++) {
+          float amplitude =
+            0.5;
+
+          for(
+            int i = 0;
+            i < 5;
+            i++
+          ) {
 
             value +=
-              noise(p) *
+              noise3(p) *
               amplitude;
 
-            p *= 2.0;
+            p *=
+              2.03;
 
-            amplitude *= 0.5;
+            amplitude *=
+              0.5;
           }
 
           return value;
@@ -223,89 +306,28 @@ export const Mercury = ({
 
         /*
          * ======================================================
-         * CELL / VORONOI-LIKE STRUCTURE
+         * 3D CRATER FIELD
          * ======================================================
+         *
+         * Craters are generated directly in 3D space.
+         *
+         * This is the key fix for the column-wise UV artifact.
          */
 
-        float craterCells(vec2 p) {
-
-          vec2 cell =
-            floor(p);
-
-          vec2 local =
-            fract(p);
-
-          float nearest =
-            10.0;
-
-          for(int y = -1; y <= 1; y++) {
-
-            for(int x = -1; x <= 1; x++) {
-
-              vec2 offset =
-                vec2(
-                  float(x),
-                  float(y)
-                );
-
-              vec2 randomPoint =
-                vec2(
-                  hash(
-                    cell +
-                    offset
-                  ),
-                  hash(
-                    cell +
-                    offset +
-                    vec2(
-                      17.3,
-                      41.7
-                    )
-                  )
-                );
-
-              vec2 difference =
-                offset +
-                randomPoint -
-                local;
-
-              float distanceValue =
-                dot(
-                  difference,
-                  difference
-                );
-
-              nearest =
-                min(
-                  nearest,
-                  distanceValue
-                );
-            }
-          }
-
-          return sqrt(nearest);
-        }
-
-        /*
-         * ======================================================
-         * PROCEDURAL CRATER
-         * ======================================================
-         */
-
-        float crater(
-          vec2 uv,
+        float craterField(
+          vec3 direction,
           float scale,
-          float variation
+          float randomness
         ) {
 
-          vec2 p =
-            uv *
+          vec3 p =
+            direction *
             scale;
 
-          vec2 cell =
+          vec3 cell =
             floor(p);
 
-          vec2 local =
+          vec3 local =
             fract(p);
 
           float closest =
@@ -315,79 +337,118 @@ export const Mercury = ({
             10.0;
 
           float selectedRandom =
-            0.0;
+            0.5;
 
-          for(int y = -1; y <= 1; y++) {
+          /*
+           * Search neighboring 3D cells.
+           *
+           * 27 samples gives stable crater placement.
+           */
 
-            for(int x = -1; x <= 1; x++) {
+          for(
+            int z = -1;
+            z <= 1;
+            z++
+          ) {
 
-              vec2 offset =
-                vec2(
-                  float(x),
-                  float(y)
-                );
+            for(
+              int y = -1;
+              y <= 1;
+              y++
+            ) {
 
-              vec2 id =
-                cell +
-                offset;
+              for(
+                int x = -1;
+                x <= 1;
+                x++
+              ) {
 
-              vec2 point =
-                vec2(
-                  hash(id),
-                  hash(
-                    id +
-                    vec2(
-                      13.7,
-                      91.2
-                    )
-                  )
-                );
+                vec3 offset =
+                  vec3(
+                    float(x),
+                    float(y),
+                    float(z)
+                  );
 
-              /*
-               * Keep crater centers slightly irregular.
-               */
+                vec3 id =
+                  cell +
+                  offset;
 
-              point =
-                mix(
-                  point,
-                  vec2(
-                    0.5
-                  ),
-                  variation
-                );
-
-              vec2 diff =
-                offset +
-                point -
-                local;
-
-              float d =
-                length(diff);
-
-              if(d < closest) {
-
-                secondClosest =
-                  closest;
-
-                closest =
-                  d;
-
-                selectedRandom =
-                  hash(
-                    id +
-                    vec2(
-                      73.1,
-                      29.4
+                vec3 randomPoint =
+                  vec3(
+                    hash3(id),
+                    hash3(
+                      id +
+                      vec3(
+                        17.13,
+                        31.71,
+                        47.27
+                      )
+                    ),
+                    hash3(
+                      id +
+                      vec3(
+                        61.41,
+                        23.17,
+                        83.91
+                      )
                     )
                   );
 
-              } else if(
-                d <
-                secondClosest
-              ) {
+                /*
+                 * Keep crater centers reasonably
+                 * distributed without making them
+                 * perfectly regular.
+                 */
 
-                secondClosest =
-                  d;
+                randomPoint =
+                  mix(
+                    randomPoint,
+                    vec3(
+                      0.5
+                    ),
+                    randomness
+                  );
+
+                vec3 difference =
+                  offset +
+                  randomPoint -
+                  local;
+
+                float distanceValue =
+                  length(
+                    difference
+                  );
+
+                if(
+                  distanceValue <
+                  closest
+                ) {
+
+                  secondClosest =
+                    closest;
+
+                  closest =
+                    distanceValue;
+
+                  selectedRandom =
+                    hash3(
+                      id +
+                      vec3(
+                        7.31,
+                        29.47,
+                        53.19
+                      )
+                    );
+
+                } else if(
+                  distanceValue <
+                  secondClosest
+                ) {
+
+                  secondClosest =
+                    distanceValue;
+                }
               }
             }
           }
@@ -398,8 +459,8 @@ export const Mercury = ({
 
           float radius =
             mix(
-              0.10,
-              0.25,
+              0.075,
+              0.19,
               selectedRandom
             );
 
@@ -409,7 +470,7 @@ export const Mercury = ({
 
           float rim =
             smoothstep(
-              radius + 0.055,
+              radius + 0.045,
               radius,
               closest
             );
@@ -418,7 +479,7 @@ export const Mercury = ({
             1.0 -
             smoothstep(
               radius,
-              radius - 0.025,
+              radius - 0.018,
               closest
             );
 
@@ -429,127 +490,64 @@ export const Mercury = ({
           float interior =
             1.0 -
             smoothstep(
-              radius * 0.28,
-              radius * 0.82,
+              radius * 0.20,
+              radius * 0.78,
               closest
             );
 
           /*
            * Central floor.
+
+           * This gives the crater a more physical
+           * bowl-like appearance.
            */
 
           float floorMask =
             1.0 -
             smoothstep(
               0.0,
-              radius * 0.38,
+              radius * 0.40,
               closest
             );
 
           /*
-           * Slightly break circular perfection.
+           * Break perfect circularity.
            */
 
-          float irregular =
-            noise(
-              (
-                cell +
-                vec2(
-                  selectedRandom
-                )
-              ) *
-              2.7
+          float distortion =
+            noise3(
+              direction *
+              scale *
+              2.1
             );
 
           interior *=
             mix(
               0.82,
+              1.12,
+              distortion
+            );
+
+          /*
+           * Slightly vary crater strength.
+           */
+
+          float craterStrength =
+            mix(
+              0.72,
               1.15,
-              irregular
+              selectedRandom
             );
 
-          return
-            rim * 0.95 +
-            interior * 0.68 +
-            floorMask * 0.22;
-        }
-
-        /*
-         * ======================================================
-         * LARGE CRATER BASINS
-         * ======================================================
-         */
-
-        float largeBasins(vec2 uv) {
-
-          vec2 p =
-            uv *
-            5.0;
-
-          float n =
-            crater(
-              p,
-              1.0,
-              0.12
-            );
-
-          float n2 =
-            crater(
-              uv +
-              vec2(
-                4.3,
-                8.1
-              ),
-              2.8,
-              0.28
-            );
-
-          return
-            n * 0.75 +
-            n2 * 0.35;
-        }
-
-        /*
-         * ======================================================
-         * SMALL CRATER FIELD
-         * ======================================================
-         */
-
-        float smallCraters(vec2 uv) {
-
-          float c1 =
-            crater(
-              uv,
-              38.0,
-              0.25
-            );
-
-          float c2 =
-            crater(
-              uv +
-              vec2(
-                7.2,
-                3.4
-              ),
-              65.0,
-              0.42
-            );
-
-          float c3 =
-            crater(
-              uv +
-              vec2(
-                12.1,
-                -8.3
-              ),
-              105.0,
-              0.55
-            );
-
-          return
-            c1 * 0.55 +
-            c2 * 0.32 +
-            c3 * 0.18;
+          return (
+            rim *
+            0.90 +
+            interior *
+            0.62 +
+            floorMask *
+            0.20
+          ) *
+          craterStrength;
         }
 
         /*
@@ -560,8 +558,16 @@ export const Mercury = ({
 
         void main() {
 
-          vec2 uv =
-            vUv;
+          /*
+           * Normalized spherical coordinate.
+           *
+           * No UVs are used anywhere below.
+           */
+
+          vec3 direction =
+            normalize(
+              vLocalDirection
+            );
 
           /*
            * ==================================================
@@ -571,77 +577,74 @@ export const Mercury = ({
 
           vec3 deepRock =
             vec3(
-              0.040,
-              0.038,
-              0.036
+              0.035,
+              0.034,
+              0.032
             );
 
           vec3 darkRock =
             vec3(
-              0.085,
-              0.082,
-              0.078
+              0.075,
+              0.073,
+              0.069
             );
 
           vec3 midRock =
             vec3(
-              0.175,
-              0.168,
-              0.155
+              0.165,
+              0.158,
+              0.148
             );
 
           vec3 lightRock =
             vec3(
-              0.285,
-              0.270,
-              0.245
+              0.255,
+              0.242,
+              0.222
             );
 
           vec3 brightRock =
             vec3(
-              0.390,
-              0.370,
-              0.335
+              0.355,
+              0.337,
+              0.307
             );
 
           /*
            * ==================================================
-           * 🪨 LARGE GEOLOGICAL VARIATION
+           * 🪨 LARGE GEOLOGICAL STRUCTURE
            * ==================================================
            */
 
-          float terrain =
-            fbm(
-              uv *
-              3.0 +
-              vec2(
-                2.4,
-                5.7
-              )
+          float broadTerrain =
+            fbm3(
+              direction *
+              2.15
             );
 
-          float broadTerrain =
-            fbm(
-              uv *
-              1.45 +
-              vec2(
-                7.1,
-                -3.8
+          float terrain =
+            fbm3(
+              direction *
+              4.8 +
+              vec3(
+                1.7,
+                -2.3,
+                4.1
               )
             );
 
           float combinedTerrain =
-            terrain *
-            0.72 +
             broadTerrain *
-            0.28;
+            0.48 +
+            terrain *
+            0.52;
 
           vec3 surface =
             mix(
               deepRock,
               midRock,
               smoothstep(
-                0.18,
+                0.20,
                 0.62,
                 combinedTerrain
               )
@@ -652,7 +655,7 @@ export const Mercury = ({
               surface,
               lightRock,
               smoothstep(
-                0.60,
+                0.58,
                 0.82,
                 combinedTerrain
               ) *
@@ -666,19 +669,20 @@ export const Mercury = ({
            */
 
           float highlands =
-            fbm(
-              uv *
-              7.5 +
-              vec2(
+            fbm3(
+              direction *
+              9.0 +
+              vec3(
                 -4.2,
-                3.7
+                3.7,
+                2.1
               )
             );
 
           float highlandMask =
             smoothstep(
-              0.61,
-              0.84,
+              0.58,
+              0.82,
               highlands
             );
 
@@ -687,7 +691,7 @@ export const Mercury = ({
               surface,
               brightRock,
               highlandMask *
-              0.30
+              0.26
             );
 
           /*
@@ -696,15 +700,35 @@ export const Mercury = ({
            * ==================================================
            */
 
-          float basin =
-            largeBasins(
-              uv
+          float largeCraters =
+            craterField(
+              direction,
+              7.0,
+              0.16
             );
 
-          float basinDark =
+          float largeCratersSecondary =
+            craterField(
+              direction +
+              vec3(
+                0.17,
+                -0.11,
+                0.08
+              ),
+              11.0,
+              0.22
+            );
+
+          float basin =
+            largeCraters *
+            0.72 +
+            largeCratersSecondary *
+            0.28;
+
+          float basinMask =
             smoothstep(
-              0.38,
-              0.78,
+              0.34,
+              0.86,
               basin
             );
 
@@ -712,32 +736,28 @@ export const Mercury = ({
             mix(
               surface,
               darkRock,
-              basinDark *
-              0.42
+              basinMask *
+              0.40
             );
 
           /*
            * ==================================================
-           * 🕳️ MEDIUM CRATERS
+           * 🕳️ MEDIUM CRATER FIELD
            * ==================================================
            */
 
-          float mediumCrater =
-            crater(
-              uv +
-              vec2(
-                1.7,
-                8.4
-              ),
+          float mediumCraters =
+            craterField(
+              direction,
               20.0,
-              0.30
+              0.24
             );
 
           float mediumMask =
             smoothstep(
               0.30,
-              0.92,
-              mediumCrater
+              0.82,
+              mediumCraters
             );
 
           surface =
@@ -745,53 +765,78 @@ export const Mercury = ({
               surface,
               darkRock,
               mediumMask *
-              0.30
+              0.28
             );
 
           /*
            * ==================================================
-           * 🪨 CRATER RIM HIGHLIGHT
+           * ✨ CRATER RIM HIGHLIGHTS
            * ==================================================
            */
 
           float rimNoise =
-            noise(
-              uv *
-              35.0
+            noise3(
+              direction *
+              34.0 +
+              vec3(
+                2.7,
+                -1.4,
+                5.1
+              )
             );
 
           float rimHighlight =
-            mediumCrater *
+            mediumCraters *
             smoothstep(
-              0.40,
-              0.82,
+              0.46,
+              0.78,
               rimNoise
             );
 
           surface +=
             vec3(
-              0.075,
-              0.068,
-              0.058
+              0.055,
+              0.050,
+              0.044
             ) *
             rimHighlight *
-            0.34;
+            0.30;
 
           /*
            * ==================================================
-           * 🪨 SMALL CRATERS
+           * 🕳️ SMALL CRATERS
            * ==================================================
            */
 
-          float fineCraters =
-            smallCraters(
-              uv
+          float smallCraters =
+            craterField(
+              direction,
+              46.0,
+              0.32
             );
+
+          float smallerCraters =
+            craterField(
+              direction +
+              vec3(
+                -0.09,
+                0.13,
+                -0.07
+              ),
+              72.0,
+              0.38
+            );
+
+          float fineCraters =
+            smallCraters *
+            0.64 +
+            smallerCraters *
+            0.36;
 
           float fineMask =
             smoothstep(
-              0.35,
-              0.82,
+              0.30,
+              0.78,
               fineCraters
             );
 
@@ -800,7 +845,7 @@ export const Mercury = ({
               surface,
               darkRock,
               fineMask *
-              0.17
+              0.15
             );
 
           /*
@@ -810,12 +855,13 @@ export const Mercury = ({
            */
 
           float regolith =
-            fbm(
-              uv *
-              120.0 +
-              vec2(
+            fbm3(
+              direction *
+              95.0 +
+              vec3(
                 8.1,
-                -4.2
+                -4.2,
+                3.6
               )
             );
 
@@ -824,16 +870,16 @@ export const Mercury = ({
               regolith -
               0.5
             ) *
-            0.022;
+            0.020;
 
           /*
-           * Very fine granular variation.
+           * Fine granular surface detail.
            */
 
           float grain =
-            noise(
-              uv *
-              220.0
+            noise3(
+              direction *
+              175.0
             );
 
           surface +=
@@ -841,28 +887,29 @@ export const Mercury = ({
               grain -
               0.5
             ) *
-            0.009;
+            0.008;
 
           /*
            * ==================================================
-           * 🌑 SUBTLE DARK REGIONS
+           * 🌑 SUBTLE DARK GEOLOGICAL REGIONS
            * ==================================================
            */
 
           float darkRegion =
-            fbm(
-              uv *
-              2.1 +
-              vec2(
+            fbm3(
+              direction *
+              2.8 +
+              vec3(
                 -5.0,
-                7.2
+                7.2,
+                1.8
               )
             );
 
           float darkMask =
             smoothstep(
-              0.28,
-              0.46,
+              0.30,
+              0.48,
               darkRegion
             );
 
@@ -871,7 +918,7 @@ export const Mercury = ({
               surface,
               darkRock,
               darkMask *
-              0.12
+              0.11
             );
 
           /*
@@ -967,8 +1014,7 @@ export const Mercury = ({
               -0.20,
               0.08,
               NdotL
-            )
-            *
+            ) *
             (
               1.0 -
               smoothstep(
@@ -1006,7 +1052,7 @@ export const Mercury = ({
             0.83;
 
           /*
-           * Very subtle space reflection.
+           * Extremely subtle reflected ambient light.
            */
 
           surface +=
@@ -1041,10 +1087,6 @@ export const Mercury = ({
               viewFacing,
               3.8
             );
-
-          /*
-           * Keep limb extremely subtle.
-           */
 
           surface +=
             vec3(
@@ -1085,6 +1127,11 @@ export const Mercury = ({
    * ============================================================
    * 🌫️ MERCURY EXOSPHERE
    * ============================================================
+   *
+   * Mercury has an extremely thin exosphere rather than a
+   * conventional atmosphere.
+   *
+   * The visual effect is therefore intentionally very subtle.
    */
 
   const atmosphereMaterial = useMemo(() => {
@@ -1107,7 +1154,7 @@ export const Mercury = ({
         },
 
         intensity: {
-          value: 0.035,
+          value: 0.032,
         },
 
         power: {
@@ -1187,50 +1234,32 @@ export const Mercury = ({
 
   /*
    * ============================================================
-   * 🔄 ANIMATION
+   * 🌫️ EXOSPHERE ANIMATION
    * ============================================================
+   *
+   * Planet rotation is controlled centrally by Planet.tsx.
+   * Only the extremely subtle exosphere breathing effect is
+   * animated here.
    */
 
-  useFrame(
-    ({ clock }, delta) => {
+  useFrame(({ clock }) => {
+    const time =
+      clock.getElapsedTime();
 
-      const time =
-        clock.getElapsedTime();
+    if (atmosphereRef.current) {
+      const pulse =
+        1 +
+        Math.sin(
+          time *
+          0.8
+        ) *
+        0.0012;
 
-      /*
-       * Mercury rotation.
-       */
-
-      if (mercuryRef.current) {
-
-        mercuryRef.current.rotation.y +=
-          delta *
-          rotationSpeed;
-      }
-
-      /*
-       * Extremely subtle exosphere pulse.
-       */
-
-      if (atmosphereRef.current) {
-
-        const pulse =
-          1 +
-          Math.sin(
-            time *
-            0.8
-          ) *
-          0.0012;
-
-        atmosphereRef.current.scale.setScalar(
-          pulse
-        );
-      }
-
-      mercuryMaterial.uniforms.uTime.value =
-        time;
+      atmosphereRef.current.scale.setScalar(
+        pulse,
+      );
     }
-  );
+  });
 
   /*
    * ============================================================
@@ -1244,8 +1273,11 @@ export const Mercury = ({
       {/* ☿ Mercury Surface */}
 
       <Sphere
-        ref={mercuryRef}
-        args={[1, 96, 96]}
+        args={[
+          1,
+          96,
+          96,
+        ]}
         castShadow
         receiveShadow
       >
