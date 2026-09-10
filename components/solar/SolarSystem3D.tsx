@@ -157,9 +157,9 @@ function SimulationClock({
         currentDaysPerSecond.current,
         targetDaysPerSecond,
         1 -
-          Math.exp(
-            -8 * delta,
-          ),
+        Math.exp(
+          -8 * delta,
+        ),
       );
 
     /* ========================================================
@@ -236,8 +236,8 @@ function SceneStartup({
     if (
       !environmentReadyRef.current &&
       elapsedRef.current >=
-        ENVIRONMENT_START_DELAY /
-          1000
+      ENVIRONMENT_START_DELAY /
+      1000
     ) {
       environmentReadyRef.current =
         true;
@@ -252,8 +252,8 @@ function SceneStartup({
     if (
       !orbitReadyRef.current &&
       elapsedRef.current >=
-        ORBIT_START_DELAY /
-          1000
+      ORBIT_START_DELAY /
+      1000
     ) {
       orbitReadyRef.current =
         true;
@@ -667,24 +667,13 @@ export default function SolarSystem3D({
 
           {orbitReady && (
             <group>
-              {planetData.map(
-                (
-                  planet,
-                  index,
-                ) => (
-                  <OrbitPath
-                    key={
-                      planet.name
-                    }
-                    distance={
-                      planet.distance
-                    }
-                    index={
-                      index
-                    }
-                  />
-                ),
-              )}
+              {planetData.map((planet, index) => (
+                <OrbitPath
+                  key={planet.name}
+                  distance={planet.distance}
+                  index={index}
+                />
+              ))}
             </group>
           )}
 
