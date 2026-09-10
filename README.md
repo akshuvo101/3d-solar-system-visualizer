@@ -189,4 +189,16 @@ Full-Stack Web Developer
 
 ## 📄 License
 
-This project is licensed under the [MIT License](./LICENSE).
+**Proprietary — All Rights Reserved**
+
+Copyright (c) 2026 AK Shuvo.
+
+This project and its source code are proprietary. Unauthorized copying,
+modification, redistribution, sublicensing, or commercial use of the
+source code is not permitted without prior written permission.
+
+The live demo is publicly accessible for viewing and evaluation. Access
+to the live application does not grant any rights to the underlying
+source code.
+
+See the [LICENSE](./LICENSE) file for the complete terms.

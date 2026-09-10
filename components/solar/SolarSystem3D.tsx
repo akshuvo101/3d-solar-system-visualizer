@@ -6,24 +6,29 @@ import { Sun } from "./Sun";
 import OrbitPath from "./OrbitPath";
 import { CameraController } from "./CameraController";
 import { Planet } from "./Planet";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "@react-three/drei";
 import ZoomControls from "../ui/Button";
 import { DeepSpace } from "./DeepSpace";
 import { AsteroidBelt } from "./AsteroidBelt";
 import { KuiperBelt } from "./KuiperBelt";
+
 import {
   SIMULATION_MODES,
   type PlaybackSpeed,
+  type SimulationMode,
 } from "@/lib/simulationTime";
+
 import { CinematicController } from "./CinamaticController";
 import { StarField } from "./StarField";
+
+import type { PlanetSelection } from "@/types";
 
 /* ============================================================
    🌌 SHARED SIMULATION CLOCK
 
-   Every planet must use the SAME astronomical time.
+   Every planet uses the SAME astronomical time.
 
    The clock starts from the real current UTC time.
 
@@ -38,22 +43,52 @@ import { StarField } from "./StarField";
    Then Day / Month / Year + playback speed
    advance this single clock.
 
-   IMPORTANT:
-
-   The same exact simulation delta is also shared
+   The same simulated delta is also shared
    with planet axial rotation.
 
-   Therefore orbital motion and axial rotation
-   always use the same simulated elapsed time.
+   Therefore:
+
+        Shared Simulation Clock
+                  ↓
+          Simulation Δtime
+             ↙       ↘
+          Orbit     Rotation
    ============================================================ */
 
 const DAY_IN_MILLISECONDS = 86_400_000;
 
+/* ============================================================
+   🎬 PROGRESSIVE STARTUP TIMING
+
+   The main solar system is rendered immediately.
+
+   Only heavier decorative systems are delayed slightly
+   so the browser/GPU does not need to initialize every
+   expensive object during the very first frame.
+
+   This gives the user:
+
+   Page Open
+       ↓
+   Background
+       ↓
+   Sun + Planets
+       ↓
+   Heavy Environment
+       ↓
+   Orbit Paths
+   ============================================================ */
+
+const ENVIRONMENT_START_DELAY = 180;
+const ORBIT_START_DELAY = 280;
+
 type Props = {
-  simulationMode: keyof typeof SIMULATION_MODES;
+  simulationMode: SimulationMode;
   playbackSpeed: PlaybackSpeed;
   selectedPlanet: string;
-  onPlanetClick: (planet: any) => void;
+  onPlanetClick: (
+    planet: PlanetSelection,
+  ) => void;
 };
 
 /* ============================================================
@@ -87,26 +122,21 @@ function SimulationClock({
   simulationTimeRef,
   simulationDeltaDaysRef,
 }: {
-  simulationMode: keyof typeof SIMULATION_MODES;
+  simulationMode: SimulationMode;
   playbackSpeed: PlaybackSpeed;
   simulationTimeRef: React.MutableRefObject<number>;
   simulationDeltaDaysRef: React.MutableRefObject<number>;
 }) {
   /* ==========================================================
      🌀 SMOOTH SIMULATION SPEED
-
-     This prevents a sudden jump when switching:
-
-     Day → Month
-     Month → Year
-     Year → Day
      ========================================================== */
 
-  const currentDaysPerSecond = useRef<number>(
-    SIMULATION_MODES[
-      simulationMode
-    ].daysPerSecond,
-  );
+  const currentDaysPerSecond =
+    useRef<number>(
+      SIMULATION_MODES[
+        simulationMode
+      ].daysPerSecond,
+    );
 
   useFrame((_, delta) => {
     /* ========================================================
@@ -120,29 +150,20 @@ function SimulationClock({
 
     /* ========================================================
        🌀 SMOOTH MODE TRANSITION
-
-       The current simulation speed gradually approaches
-       the selected mode speed.
-
-       This keeps Day / Month / Year transitions smooth.
        ======================================================== */
 
     currentDaysPerSecond.current =
       THREE.MathUtils.lerp(
         currentDaysPerSecond.current,
         targetDaysPerSecond,
-        1 - Math.exp(-8 * delta),
+        1 -
+          Math.exp(
+            -8 * delta,
+          ),
       );
 
     /* ========================================================
        ⚡ PLAYBACK SPEED
-
-       Example:
-
-       Year mode
-       × 5 playback
-       =
-       5× faster simulation time
        ======================================================== */
 
     const effectivePlaybackSpeed =
@@ -154,19 +175,6 @@ function SimulationClock({
 
     /* ========================================================
        ⏱️ EXACT SIMULATED TIME ELAPSED
-
-       days/sec
-          ×
-       real seconds/frame
-          =
-       simulated Earth-days/frame
-
-       IMPORTANT:
-
-       This exact value is shared with EVERY planet.
-
-       No Planet component calculates its own
-       simulation speed anymore.
        ======================================================== */
 
     const simulationDeltaDays =
@@ -174,11 +182,6 @@ function SimulationClock({
 
     /* ========================================================
        📡 SHARE EXACT FRAME DELTA
-
-       Planet.tsx will use this value for axial rotation.
-
-       Therefore rotation uses the exact same
-       simulated elapsed time as orbital motion.
        ======================================================== */
 
     simulationDeltaDaysRef.current =
@@ -186,12 +189,6 @@ function SimulationClock({
 
     /* ========================================================
        🌍 ADVANCE SHARED ASTRONOMICAL TIME
-
-       simulated days
-            ×
-       milliseconds/day
-            =
-       simulated milliseconds
        ======================================================== */
 
     simulationTimeRef.current +=
@@ -201,6 +198,76 @@ function SimulationClock({
 
   return null;
 }
+
+/* ============================================================
+   🎬 PROGRESSIVE SCENE STARTUP
+
+   Main scene objects are NOT delayed.
+
+   This controller only controls the mounting of the heavier
+   decorative environment and orbit paths.
+
+   No artificial full-scene waiting period is used.
+   ============================================================ */
+
+function SceneStartup({
+  onEnvironmentReady,
+  onOrbitReady,
+}: {
+  onEnvironmentReady: () => void;
+  onOrbitReady: () => void;
+}) {
+  const elapsedRef =
+    useRef(0);
+
+  const environmentReadyRef =
+    useRef(false);
+
+  const orbitReadyRef =
+    useRef(false);
+
+  useFrame((_, delta) => {
+    elapsedRef.current += delta;
+
+    /* ========================================================
+       🌌 HEAVY ENVIRONMENT
+       ======================================================== */
+
+    if (
+      !environmentReadyRef.current &&
+      elapsedRef.current >=
+        ENVIRONMENT_START_DELAY /
+          1000
+    ) {
+      environmentReadyRef.current =
+        true;
+
+      onEnvironmentReady();
+    }
+
+    /* ========================================================
+       🌀 ORBIT PATHS
+       ======================================================== */
+
+    if (
+      !orbitReadyRef.current &&
+      elapsedRef.current >=
+        ORBIT_START_DELAY /
+          1000
+    ) {
+      orbitReadyRef.current =
+        true;
+
+      onOrbitReady();
+    }
+  });
+
+  return null;
+}
+
+/* ============================================================
+   🌌 SOLAR SYSTEM
+   ============================================================ */
 
 export default function SolarSystem3D({
   simulationMode,
@@ -212,73 +279,95 @@ export default function SolarSystem3D({
      🪐 PLANET REFS
      ============================================================ */
 
-  const planetRefs = useRef<
-    Record<
-      string,
-      React.RefObject<THREE.Group | null>
-    >
-  >({});
+  const planetRefs =
+    useRef<
+      Record<
+        string,
+        React.RefObject<
+          THREE.Group | null
+        >
+      >
+    >({});
 
   const setRef = (
     name: string,
-    ref: React.RefObject<THREE.Group | null>,
+    ref: React.RefObject<
+      THREE.Group | null
+    >,
   ) => {
-    planetRefs.current[name] = ref;
+    planetRefs.current[name] =
+      ref;
   };
 
   /* ============================================================
      🎥 ORBIT CONTROLS REF
      ============================================================ */
 
-  const controlsRef = useRef<any>(null);
+  const controlsRef =
+    useRef<any>(null);
 
   /* ============================================================
      🌌 ENVIRONMENT REF
      ============================================================ */
 
   const environmentRef =
-    useRef<THREE.Group | null>(null);
+    useRef<
+      THREE.Group | null
+    >(null);
 
   /* ============================================================
      ⏱️ SHARED ASTRONOMICAL SIMULATION TIME
 
-     IMPORTANT:
-
-     This is initialized ONLY from the real current time.
+     Initialized ONLY from the real current time.
 
      localStorage is intentionally NOT used.
-
-     Every planet receives this exact same time.
-
-     On page reload:
-
-     Date.now()
-          ↓
-     new astronomical starting point
      ============================================================ */
 
   const simulationTimeRef =
-    useRef<number>(Date.now());
+    useRef<number>(
+      Date.now(),
+    );
 
   /* ============================================================
      ⏱️ SHARED SIMULATION DELTA
-
-     This stores the exact amount of simulated
-     Earth-days that passed during the current frame.
-
-     SimulationClock calculates it once.
-
-     Every Planet consumes the same value.
-
-     This is what synchronizes:
-
-     🪐 Orbital motion
-            +
-     🔄 Axial rotation
      ============================================================ */
 
   const simulationDeltaDaysRef =
     useRef<number>(0);
+
+  /* ============================================================
+     🎬 PROGRESSIVE STARTUP STATE
+
+     These states control only heavy decorative systems.
+
+     The main solar system itself is visible immediately.
+     ============================================================ */
+
+  const [
+    environmentReady,
+    setEnvironmentReady,
+  ] = useState(false);
+
+  const [
+    orbitReady,
+    setOrbitReady,
+  ] = useState(false);
+
+  /* ============================================================
+     🎬 STARTUP CALLBACKS
+     ============================================================ */
+
+  const handleEnvironmentReady =
+    () => {
+      setEnvironmentReady(
+        true,
+      );
+    };
+
+  const handleOrbitReady =
+    () => {
+      setOrbitReady(true);
+    };
 
   /* ============================================================
      🔍 MANUAL ZOOM IN
@@ -318,214 +407,440 @@ export default function SolarSystem3D({
     controls.update();
   };
 
+  /* ============================================================
+     🌌 PAGE ROOT
+
+     The background exists immediately.
+
+     This means the user never sees a white/empty area while
+     the WebGL canvas initializes.
+     ============================================================ */
+
   return (
     <div
       style={{
         width: "100vw",
         height: "100vh",
         position: "relative",
+        overflow: "hidden",
+
+        background:
+          "radial-gradient(circle at center, #090d1c 0%, #03050d 55%, #000108 100%)",
       }}
     >
-      <Canvas
-        camera={{
-          position: [0, 30, 80],
-          fov: 65,
-          near: 0.1,
-          far: 5000,
+      {/* ======================================================
+          🌌 INITIAL SPACE BACKGROUND
+
+          Exists outside Canvas.
+
+          This provides immediate visual feedback while
+          WebGL is initializing.
+      ====================================================== */}
+
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          pointerEvents: "none",
+
+          background:
+            "radial-gradient(circle at 50% 48%, rgba(28, 42, 90, 0.16), transparent 42%)",
+
+          zIndex: 0,
         }}
-        dpr={[1, 2]}
-        shadows
-        gl={{
-          antialias: true,
-          powerPreference:
-            "high-performance",
+      />
+
+      {/* ======================================================
+          🎬 THREE.JS SCENE
+
+          IMPORTANT:
+
+          The Canvas is visible immediately.
+
+          There is NO artificial 700ms opacity delay.
+
+          This removes unnecessary waiting while still
+          allowing heavy systems to initialize progressively.
+      ====================================================== */}
+
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          zIndex: 1,
         }}
       >
-        {/* ======================================================
-            ⏱️ SHARED SIMULATION CLOCK
+        <Canvas
+          camera={{
+            position: [
+              0,
+              30,
+              80,
+            ],
 
-            MUST be rendered before planets.
+            fov: 65,
 
-            This creates ONE simulation time and
-            ONE exact simulation delta for the
-            entire solar system.
-        ====================================================== */}
+            near: 0.1,
 
-        <SimulationClock
-          simulationMode={
-            simulationMode
-          }
-          playbackSpeed={
-            playbackSpeed
-          }
-          simulationTimeRef={
-            simulationTimeRef
-          }
-          simulationDeltaDaysRef={
-            simulationDeltaDaysRef
-          }
-        />
-
-        {/* ======================================================
-            🎥 ORBIT CONTROLS
-        ====================================================== */}
-
-        <OrbitControls
-          ref={controlsRef}
-          makeDefault
-          enableRotate={true}
-          enableZoom={true}
-          enablePan={false}
-          enableDamping={true}
-          dampingFactor={0.045}
-          rotateSpeed={0.55}
-          zoomSpeed={0.75}
-          minDistance={4}
-          maxDistance={2500}
-          minPolarAngle={0.05}
-          maxPolarAngle={
-            Math.PI - 0.05
-          }
-          mouseButtons={{
-            LEFT: THREE.MOUSE.ROTATE,
-            MIDDLE: THREE.MOUSE.DOLLY,
-            RIGHT: THREE.MOUSE.ROTATE,
+            far: 5000,
           }}
-          touches={{
-            ONE: THREE.TOUCH.ROTATE,
-            TWO: THREE.TOUCH.DOLLY_ROTATE,
+
+          /* ==================================================
+             🚀 PERFORMANCE
+
+             Maximum DPR reduced from 2 → 1.5.
+
+             This keeps good visual quality while reducing
+             initial GPU workload on high-density displays.
+          ================================================== */
+
+          dpr={[1, 1.5]}
+
+          shadows
+
+          gl={{
+            antialias: true,
+
+            powerPreference:
+              "high-performance",
           }}
-        />
-
-        {/* ======================================================
-            🌌 DEEP SPACE
-        ====================================================== */}
-
-        <DeepSpace />
-
-        {/* ======================================================
-            ✨ STARS
-        ====================================================== */}
-
-        <StarField />
-
-        <group
-          ref={environmentRef}
         >
-          <AsteroidBelt />
-          <KuiperBelt />
+          {/* ==================================================
+              ⏱️ SHARED SIMULATION CLOCK
+
+              MUST remain before planets.
+          ================================================== */}
+
+          <SimulationClock
+            simulationMode={
+              simulationMode
+            }
+
+            playbackSpeed={
+              playbackSpeed
+            }
+
+            simulationTimeRef={
+              simulationTimeRef
+            }
+
+            simulationDeltaDaysRef={
+              simulationDeltaDaysRef
+            }
+          />
+
+          {/* ==================================================
+              🎬 STARTUP CONTROLLER
+
+              Lightweight.
+
+              Only delays heavy decorative systems.
+          ================================================== */}
+
+          <SceneStartup
+            onEnvironmentReady={
+              handleEnvironmentReady
+            }
+
+            onOrbitReady={
+              handleOrbitReady
+            }
+          />
+
+          {/* ==================================================
+              🎥 ORBIT CONTROLS
+
+              Existing camera behavior preserved.
+          ================================================== */}
+
+          <OrbitControls
+            ref={controlsRef}
+            makeDefault
+
+            enableRotate={true}
+            enableZoom={true}
+            enablePan={false}
+
+            enableDamping={true}
+
+            dampingFactor={
+              0.045
+            }
+
+            rotateSpeed={
+              0.55
+            }
+
+            zoomSpeed={
+              0.75
+            }
+
+            minDistance={4}
+            maxDistance={2500}
+
+            minPolarAngle={
+              0.05
+            }
+
+            maxPolarAngle={
+              Math.PI - 0.05
+            }
+
+            mouseButtons={{
+              LEFT:
+                THREE.MOUSE
+                  .ROTATE,
+
+              MIDDLE:
+                THREE.MOUSE
+                  .DOLLY,
+
+              RIGHT:
+                THREE.MOUSE
+                  .ROTATE,
+            }}
+
+            touches={{
+              ONE:
+                THREE.TOUCH
+                  .ROTATE,
+
+              TWO:
+                THREE.TOUCH
+                  .DOLLY_ROTATE,
+            }}
+          />
+
+          {/* ==================================================
+              🌌 DEEP SPACE
+
+              Immediate.
+          ================================================== */}
+
+          <DeepSpace />
+
+          {/* ==================================================
+              ✨ STAR FIELD
+
+              Immediate.
+
+              Lightweight enough to establish the space
+              environment from the first rendered frame.
+          ================================================== */}
+
+          <StarField />
+
+          {/* ==================================================
+              🌌 HEAVIER ENVIRONMENT
+
+              Delayed slightly.
+
+              This includes:
+
+              • Asteroid Belt
+              • Kuiper Belt
+
+              These are not necessary for the first visual
+              impression, so they can initialize shortly after.
+          ================================================== */}
+
+          {environmentReady && (
+            <group
+              ref={
+                environmentRef
+              }
+            >
+              <AsteroidBelt />
+
+              <KuiperBelt />
+            </group>
+          )}
+
+          {/* ==================================================
+              🌀 ORBIT PATHS
+
+              Delayed slightly after the environment.
+
+              This prevents all orbit geometries from being
+              created during the initial frame.
+          ================================================== */}
+
+          {orbitReady && (
+            <group>
+              {planetData.map(
+                (
+                  planet,
+                  index,
+                ) => (
+                  <OrbitPath
+                    key={
+                      planet.name
+                    }
+                    distance={
+                      planet.distance
+                    }
+                    index={
+                      index
+                    }
+                  />
+                ),
+              )}
+            </group>
+          )}
+
+          {/* ==================================================
+              ☀️ SUN
+
+              Main visual anchor.
+
+              Rendered immediately.
+          ================================================== */}
+
+          <Sun
+            setRef={setRef}
+          />
+
+          {/* ==================================================
+              💡 SUN LIGHT
+          ================================================== */}
+
+          <pointLight
+            position={[
+              0,
+              0,
+              0,
+            ]}
+            intensity={50}
+            distance={0}
+            decay={0.8}
+            castShadow
+
+            shadow-mapSize-width={
+              2048
+            }
+
+            shadow-mapSize-height={
+              2048
+            }
+
+            shadow-bias={
+              -0.0002
+            }
+
+            shadow-normalBias={
+              0.02
+            }
+
+            shadow-radius={2}
+          />
+
+          {/* ==================================================
+              🌙 SOFT AMBIENT LIGHT
+          ================================================== */}
+
+          <ambientLight
+            intensity={
+              0.035
+            }
+          />
+
+          {/* ==================================================
+              🌍 PLANETS
+
+              Rendered immediately.
+
+              These are the most important interactive objects
+              in the scene.
+          ================================================== */}
 
           {planetData.map(
-            (planet, index) => (
-              <OrbitPath
-                key={planet.name}
-                distance={
-                  planet.distance
+            (planet) => (
+              <Planet
+                key={
+                  planet.name
                 }
-                index={index}
+
+                planet={
+                  planet
+                }
+
+                simulationMode={
+                  simulationMode
+                }
+
+                playbackSpeed={
+                  playbackSpeed
+                }
+
+                simulationTimeRef={
+                  simulationTimeRef
+                }
+
+                simulationDeltaDaysRef={
+                  simulationDeltaDaysRef
+                }
+
+                selectedPlanet={
+                  selectedPlanet
+                }
+
+                setRef={
+                  setRef
+                }
+
+                onClick={
+                  onPlanetClick
+                }
               />
             ),
           )}
-        </group>
 
-        {/* ======================================================
-            ☀️ SUN
-        ====================================================== */}
+          {/* ==================================================
+              🎬 CINEMATIC CONTROLLER
 
-        <Sun
-          setRef={setRef}
-        />
+              Existing behavior preserved.
+          ================================================== */}
 
-        {/* ======================================================
-            💡 SUN LIGHT
-        ====================================================== */}
+          <CinematicController
+            selectedPlanet={
+              selectedPlanet
+            }
 
-        <pointLight
-          position={[0, 0, 0]}
-          intensity={50}
-          distance={0}
-          decay={0.8}
-          castShadow
-          shadow-mapSize-width={2048}
-          shadow-mapSize-height={2048}
-          shadow-bias={-0.0002}
-          shadow-normalBias={0.02}
-          shadow-radius={2}
-        />
+            planetRefs={
+              planetRefs
+            }
 
-        {/* ======================================================
-            🌙 SOFT AMBIENT LIGHT
-        ====================================================== */}
+            environmentRef={
+              environmentRef
+            }
+          />
 
-        <ambientLight
-          intensity={0.035}
-        />
+          {/* ==================================================
+              🎯 CAMERA CONTROLLER
 
-        {/* ======================================================
-            🌍 PLANETS
-        ====================================================== */}
+              Existing behavior preserved.
+          ================================================== */}
 
-        {planetData.map(
-          (planet) => (
-            <Planet
-              key={planet.name}
-              planet={planet}
-              simulationMode={
-                simulationMode
-              }
-              playbackSpeed={
-                playbackSpeed
-              }
-              simulationTimeRef={
-                simulationTimeRef
-              }
-              simulationDeltaDaysRef={
-                simulationDeltaDaysRef
-              }
-              selectedPlanet={
-                selectedPlanet
-              }
-              setRef={setRef}
-              onClick={
-                onPlanetClick
-              }
-            />
-          ),
-        )}
+          <CameraController
+            selectedPlanet={
+              selectedPlanet
+            }
 
-        {/* ======================================================
-            🎬 CINEMATIC CONTROLLER
-        ====================================================== */}
+            refs={
+              planetRefs
+            }
 
-        <CinematicController
-          selectedPlanet={
-            selectedPlanet
-          }
-          planetRefs={
-            planetRefs
-          }
-          environmentRef={
-            environmentRef
-          }
-        />
-
-        {/* ======================================================
-            🎯 CAMERA CONTROLLER
-        ====================================================== */}
-
-        <CameraController
-          selectedPlanet={
-            selectedPlanet
-          }
-          refs={planetRefs}
-          controlsRef={
-            controlsRef
-          }
-        />
-      </Canvas>
+            controlsRef={
+              controlsRef
+            }
+          />
+        </Canvas>
+      </div>
 
       {/* ========================================================
           🔍 MANUAL ZOOM CONTROLS
+
+          Existing UI preserved.
       ======================================================== */}
 
       <ZoomControls

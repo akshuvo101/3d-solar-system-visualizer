@@ -1,6 +1,6 @@
 "use client";
 
-import { Sphere, useTexture } from "@react-three/drei";
+import { Sphere } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
@@ -13,7 +13,7 @@ type SunProps = {
 };
 
 // ============================================================
-// ☀️ PRO CINEMATIC SUN
+// ☀️ PRO CINEMATIC PROCEDURAL SUN
 // ============================================================
 
 export const Sun = ({ setRef }: SunProps) => {
@@ -24,18 +24,11 @@ export const Sun = ({ setRef }: SunProps) => {
   const groupRef = useRef<THREE.Group>(null);
 
   // ==========================================================
-  // ☀️ SUN TEXTURE
-  // ==========================================================
-
-  const texture = useTexture(
-    "/textures/sun.jpg",
-  ) as THREE.Texture;
-
-  // ==========================================================
   // 🎥 VISUAL REFS
   // ==========================================================
 
-  const coreRef = useRef<THREE.Mesh>(null);
+  const coreRef =
+    useRef<THREE.Mesh>(null);
 
   const plasmaRef =
     useRef<THREE.ShaderMaterial>(null);
@@ -46,26 +39,14 @@ export const Sun = ({ setRef }: SunProps) => {
   const outerRef =
     useRef<THREE.Mesh>(null);
 
-  const networkGroupRef =
-    useRef<THREE.Group>(null);
-
-  const networkMaterialRef =
-    useRef<THREE.LineBasicMaterial>(null);
-
-  const nodeMaterialRef =
-    useRef<THREE.MeshBasicMaterial>(null);
-
   const coronaRef =
     useRef<THREE.ShaderMaterial>(null);
 
   const coronaGlowRef =
     useRef<THREE.ShaderMaterial>(null);
 
-  const fresnelRef =
-    useRef<THREE.ShaderMaterial>(null);
-
   // ==========================================================
-  // 🔥 ADVANCED SOLAR PLASMA
+  // 🔥 ADVANCED PROCEDURAL SOLAR PLASMA
   // ==========================================================
 
   const plasmaMaterial = useMemo(
@@ -76,39 +57,44 @@ export const Sun = ({ setRef }: SunProps) => {
             value: 0,
           },
 
-          uMap: {
-            value: texture,
-          },
-
           uColorDeep: {
-            value: new THREE.Color("#650500"),
+            value:
+              new THREE.Color("#650500"),
           },
 
           uColorA: {
-            value: new THREE.Color("#c91800"),
+            value:
+              new THREE.Color("#c91800"),
           },
 
           uColorB: {
-            value: new THREE.Color("#ff4b08"),
+            value:
+              new THREE.Color("#ff4b08"),
           },
 
           uColorC: {
-            value: new THREE.Color("#ff9d24"),
+            value:
+              new THREE.Color("#ff9d24"),
           },
 
           uColorHot: {
-            value: new THREE.Color("#fff0ad"),
+            value:
+              new THREE.Color("#fff0ad"),
           },
         },
 
+        // ======================================================
+        // VERTEX SHADER
+        // ======================================================
+
         vertexShader: `
-          varying vec2 vUv;
+          varying vec3 vLocalPosition;
           varying vec3 vNormal;
           varying vec3 vViewDir;
 
           void main() {
 
-            vUv = uv;
+            vLocalPosition = position;
 
             vec4 mvPosition =
               modelViewMatrix *
@@ -131,13 +117,16 @@ export const Sun = ({ setRef }: SunProps) => {
           }
         `,
 
+        // ======================================================
+        // FRAGMENT SHADER
+        // ======================================================
+
         fragmentShader: `
-          varying vec2 vUv;
+          varying vec3 vLocalPosition;
           varying vec3 vNormal;
           varying vec3 vViewDir;
 
           uniform float uTime;
-          uniform sampler2D uMap;
 
           uniform vec3 uColorDeep;
           uniform vec3 uColorA;
@@ -146,18 +135,30 @@ export const Sun = ({ setRef }: SunProps) => {
           uniform vec3 uColorHot;
 
           // ==================================================
-          // HASH
+          // ROBUST 3D HASH
+          // ==================================================
+          //
+          // IMPORTANT:
+          // The previous hash used multiplication of the
+          // individual coordinates after fract().
+          //
+          // That can produce artificial dark seams when one
+          // coordinate becomes zero.
+          //
+          // This version uses a dot-product based hash and
+          // avoids coordinate-plane artifacts.
           // ==================================================
 
-          float hash(vec2 p) {
+          float hash(vec3 p) {
 
             return fract(
               sin(
                 dot(
                   p,
-                  vec2(
+                  vec3(
                     127.1,
-                    311.7
+                    311.7,
+                    74.7
                   )
                 )
               ) *
@@ -166,44 +167,18 @@ export const Sun = ({ setRef }: SunProps) => {
           }
 
           // ==================================================
-          // VALUE NOISE
+          // 3D VALUE NOISE
           // ==================================================
 
-          float noise(vec2 p) {
+          float noise3(vec3 p) {
 
-            vec2 i = floor(p);
-            vec2 f = fract(p);
+            vec3 i =
+              floor(p);
 
-            float a = hash(i);
+            vec3 f =
+              fract(p);
 
-            float b =
-              hash(
-                i +
-                vec2(
-                  1.0,
-                  0.0
-                )
-              );
-
-            float c =
-              hash(
-                i +
-                vec2(
-                  0.0,
-                  1.0
-                )
-              );
-
-            float d =
-              hash(
-                i +
-                vec2(
-                  1.0,
-                  1.0
-                )
-              );
-
-            vec2 u =
+            f =
               f *
               f *
               (
@@ -211,136 +186,251 @@ export const Sun = ({ setRef }: SunProps) => {
                 2.0 * f
               );
 
+            float n000 =
+              hash(
+                i +
+                vec3(
+                  0.0,
+                  0.0,
+                  0.0
+                )
+              );
+
+            float n100 =
+              hash(
+                i +
+                vec3(
+                  1.0,
+                  0.0,
+                  0.0
+                )
+              );
+
+            float n010 =
+              hash(
+                i +
+                vec3(
+                  0.0,
+                  1.0,
+                  0.0
+                )
+              );
+
+            float n110 =
+              hash(
+                i +
+                vec3(
+                  1.0,
+                  1.0,
+                  0.0
+                )
+              );
+
+            float n001 =
+              hash(
+                i +
+                vec3(
+                  0.0,
+                  0.0,
+                  1.0
+                )
+              );
+
+            float n101 =
+              hash(
+                i +
+                vec3(
+                  1.0,
+                  0.0,
+                  1.0
+                )
+              );
+
+            float n011 =
+              hash(
+                i +
+                vec3(
+                  0.0,
+                  1.0,
+                  1.0
+                )
+              );
+
+            float n111 =
+              hash(
+                i +
+                vec3(
+                  1.0,
+                  1.0,
+                  1.0
+                )
+              );
+
+            float x00 =
+              mix(
+                n000,
+                n100,
+                f.x
+              );
+
+            float x10 =
+              mix(
+                n010,
+                n110,
+                f.x
+              );
+
+            float x01 =
+              mix(
+                n001,
+                n101,
+                f.x
+              );
+
+            float x11 =
+              mix(
+                n011,
+                n111,
+                f.x
+              );
+
+            float y0 =
+              mix(
+                x00,
+                x10,
+                f.y
+              );
+
+            float y1 =
+              mix(
+                x01,
+                x11,
+                f.y
+              );
+
             return mix(
-              a,
-              b,
-              u.x
-            )
-            +
-            (
-              c - a
-            ) *
-            u.y *
-            (
-              1.0 - u.x
-            )
-            +
-            (
-              d - b
-            ) *
-            u.x *
-            u.y;
+              y0,
+              y1,
+              f.z
+            );
           }
 
           // ==================================================
           // FBM
           // ==================================================
 
-          float fbm(vec2 p) {
+          float fbm3(vec3 p) {
 
             float value = 0.0;
+
             float amplitude = 0.5;
 
             value +=
-              noise(p) *
-              amplitude;
-
-            p *= 2.03;
-            amplitude *= 0.5;
-
-            value +=
-              noise(p) *
-              amplitude;
-
-            p *= 2.01;
-            amplitude *= 0.5;
-
-            value +=
-              noise(p) *
+              noise3(p) *
               amplitude;
 
             p *= 2.02;
             amplitude *= 0.5;
 
             value +=
-              noise(p) *
+              noise3(p) *
+              amplitude;
+
+            p *= 2.01;
+            amplitude *= 0.5;
+
+            value +=
+              noise3(p) *
+              amplitude;
+
+            p *= 2.03;
+            amplitude *= 0.5;
+
+            value +=
+              noise3(p) *
               amplitude;
 
             p *= 2.0;
             amplitude *= 0.5;
 
             value +=
-              noise(p) *
+              noise3(p) *
               amplitude;
 
             return value;
           }
 
           // ==================================================
-          // SOLAR GRANULATION
+          // HIGH FREQUENCY GRANULATION
           // ==================================================
 
-          float granulation(vec2 p) {
+          float granulation(vec3 p) {
 
             float g1 =
-              noise(
-                p * 38.0
+              noise3(
+                p * 26.0
               );
 
             float g2 =
-              noise(
-                p * 72.0
+              noise3(
+                p * 54.0
               );
 
             float g3 =
-              noise(
-                p * 120.0
+              noise3(
+                p * 96.0
+              );
+
+            float g4 =
+              noise3(
+                p * 150.0
               );
 
             return
-              g1 * 0.55 +
-              g2 * 0.30 +
-              g3 * 0.15;
+              g1 * 0.46 +
+              g2 * 0.28 +
+              g3 * 0.18 +
+              g4 * 0.08;
           }
 
           // ==================================================
-          // SUNSPOT
+          // SOLAR ACTIVE REGION
           // ==================================================
 
-          float sunspot(
-            vec2 uv,
-            vec2 center,
-            float radius
+          float activeRegion(
+            vec3 direction,
+            vec3 center,
+            float size
           ) {
 
             float d =
               distance(
-                uv,
+                direction,
                 center
               );
 
-            float spot =
+            float region =
               1.0 -
               smoothstep(
-                radius * 0.35,
-                radius,
+                size * 0.35,
+                size,
                 d
               );
 
-            float irregular =
-              noise(
-                uv * 28.0
+            float distortion =
+              fbm3(
+                direction * 7.0
               );
 
-            spot *=
+            region *=
               mix(
-                0.7,
-                1.15,
-                irregular
+                0.76,
+                1.08,
+                distortion
               );
 
             return clamp(
-              spot,
+              region,
               0.0,
               1.0
             );
@@ -352,31 +442,48 @@ export const Sun = ({ setRef }: SunProps) => {
 
           void main() {
 
-            vec2 uv = vUv;
+            vec3 direction =
+              normalize(
+                vLocalPosition
+              );
 
             // =================================================
-            // SOLAR ROTATION
+            // SOLAR SURFACE MOTION
             // =================================================
 
-            float rotation =
-              uTime * 0.025;
+            vec3 movingDirection =
+              direction;
 
-            vec2 rotatingUv =
-              uv;
+            movingDirection.x +=
+              sin(
+                direction.y * 7.0 +
+                uTime * 0.018
+              ) *
+              0.035;
 
-            rotatingUv.x +=
-              rotation;
+            movingDirection.y +=
+              cos(
+                direction.x * 6.0 -
+                uTime * 0.014
+              ) *
+              0.025;
+
+            movingDirection =
+              normalize(
+                movingDirection
+              );
 
             // =================================================
             // LARGE TURBULENCE
             // =================================================
 
             float largeNoise =
-              fbm(
-                rotatingUv * 5.5 +
-                vec2(
-                  uTime * 0.018,
-                  -uTime * 0.012
+              fbm3(
+                movingDirection * 3.8 +
+                vec3(
+                  uTime * 0.012,
+                  -uTime * 0.009,
+                  uTime * 0.006
                 )
               );
 
@@ -385,11 +492,12 @@ export const Sun = ({ setRef }: SunProps) => {
             // =================================================
 
             float mediumNoise =
-              fbm(
-                rotatingUv * 11.0 +
-                vec2(
-                  -uTime * 0.035,
-                  uTime * 0.028
+              fbm3(
+                movingDirection * 8.5 +
+                vec3(
+                  -uTime * 0.020,
+                  uTime * 0.016,
+                  -uTime * 0.012
                 )
               );
 
@@ -398,11 +506,12 @@ export const Sun = ({ setRef }: SunProps) => {
             // =================================================
 
             float smallNoise =
-              noise(
-                rotatingUv * 24.0 +
-                vec2(
-                  uTime * 0.05,
-                  -uTime * 0.04
+              noise3(
+                movingDirection * 19.0 +
+                vec3(
+                  uTime * 0.035,
+                  -uTime * 0.028,
+                  uTime * 0.022
                 )
               );
 
@@ -412,21 +521,17 @@ export const Sun = ({ setRef }: SunProps) => {
 
             float granules =
               granulation(
-                rotatingUv +
-                vec2(
-                  uTime * 0.015,
-                  -uTime * 0.01
-                )
+                movingDirection
               );
 
             // =================================================
-            // PLASMA
+            // PLASMA FIELD
             // =================================================
 
             float plasma =
               largeNoise * 0.38 +
-              mediumNoise * 0.36 +
-              smallNoise * 0.10 +
+              mediumNoise * 0.34 +
+              smallNoise * 0.12 +
               granules * 0.16;
 
             plasma =
@@ -437,72 +542,53 @@ export const Sun = ({ setRef }: SunProps) => {
               );
 
             // =================================================
-            // TEXTURE
-            // =================================================
-
-            vec3 tex =
-              texture2D(
-                uMap,
-                rotatingUv
-              ).rgb;
-
-            float textureHeat =
-              dot(
-                tex,
-                vec3(
-                  0.55,
-                  0.30,
-                  0.15
-                )
-              );
-
-            // =================================================
-            // HEAT FIELD
-            // =================================================
-
-            float heat =
-              clamp(
-                textureHeat * 0.42 +
-                plasma * 0.68,
-                0.0,
-                1.0
-              );
-
-            // =================================================
-            // ACTIVE REGIONS
+            // SOLAR ACTIVE REGIONS
             // =================================================
 
             float spot1 =
-              sunspot(
-                rotatingUv,
-                vec2(
-                  0.30,
-                  0.58
+              activeRegion(
+                movingDirection,
+                normalize(
+                  vec3(
+                    0.34,
+                    0.42,
+                    0.82
+                  )
                 ),
-                0.075
+                0.22
               );
 
             float spot2 =
-              sunspot(
-                rotatingUv,
-                vec2(
-                  0.68,
-                  0.38
+              activeRegion(
+                movingDirection,
+                normalize(
+                  vec3(
+                    -0.58,
+                    0.18,
+                    0.76
+                  )
                 ),
-                0.055
+                0.17
               );
 
             float spot3 =
-              sunspot(
-                rotatingUv,
-                vec2(
-                  0.52,
-                  0.73
+              activeRegion(
+                movingDirection,
+                normalize(
+                  vec3(
+                    0.24,
+                    -0.62,
+                    0.74
+                  )
                 ),
-                0.045
+                0.14
               );
 
-            float spots =
+            // =================================================
+            // ACTIVE REGION MASK
+            // =================================================
+
+            float activeRegionMask =
               max(
                 spot1,
                 max(
@@ -511,8 +597,44 @@ export const Sun = ({ setRef }: SunProps) => {
                 )
               );
 
-            heat -=
-              spots * 0.34;
+            // =================================================
+            // SUBTLE DARK SOLAR STRUCTURE
+            // =================================================
+            //
+            // Kept intentionally weak.
+            // This creates sunspot-like regions without
+            // producing artificial black lines.
+            // =================================================
+
+            float darkStructure =
+              smoothstep(
+                0.62,
+                0.94,
+                activeRegionMask
+              );
+
+            plasma -=
+              darkStructure *
+              0.055;
+
+            plasma =
+              clamp(
+                plasma,
+                0.0,
+                1.0
+              );
+
+            // =================================================
+            // COLOR HEAT
+            // =================================================
+
+            float heat =
+              clamp(
+                plasma * 1.18 +
+                largeNoise * 0.18,
+                0.0,
+                1.0
+              );
 
             // =================================================
             // COLOR RAMP
@@ -535,7 +657,7 @@ export const Sun = ({ setRef }: SunProps) => {
                 uColorB,
                 smoothstep(
                   0.25,
-                  0.58,
+                  0.56,
                   heat
                 )
               );
@@ -545,8 +667,8 @@ export const Sun = ({ setRef }: SunProps) => {
                 fire,
                 uColorC,
                 smoothstep(
-                  0.52,
-                  0.82,
+                  0.50,
+                  0.80,
                   heat
                 )
               );
@@ -556,10 +678,11 @@ export const Sun = ({ setRef }: SunProps) => {
                 fire,
                 uColorHot,
                 smoothstep(
-                  0.78,
+                  0.76,
                   1.0,
                   heat
-                ) * 0.75
+                ) *
+                0.78
               );
 
             // =================================================
@@ -576,7 +699,7 @@ export const Sun = ({ setRef }: SunProps) => {
             fire *=
               mix(
                 0.82,
-                1.18,
+                1.16,
                 granulationContrast
               );
 
@@ -601,7 +724,7 @@ export const Sun = ({ setRef }: SunProps) => {
             float limb =
               smoothstep(
                 0.0,
-                0.9,
+                0.92,
                 facing
               );
 
@@ -643,7 +766,7 @@ export const Sun = ({ setRef }: SunProps) => {
               0.12;
 
             // =================================================
-            // FINAL ENERGY
+            // FINAL SOLAR ENERGY
             // =================================================
 
             fire *= 1.10;
@@ -658,233 +781,8 @@ export const Sun = ({ setRef }: SunProps) => {
 
         toneMapped: false,
       }),
-    [texture],
+    [],
   );
-
-  // ==========================================================
-  // 🕸️ SOLAR NODE NETWORK
-  // ==========================================================
-
-  const solarNetwork = useMemo(() => {
-
-    const nodes: THREE.Vector3[] = [];
-
-    const edges: Array<
-      [number, number]
-    > = [];
-
-    // Keep network safely inside the solar circle.
-    const networkRadius = 4.55;
-
-    // Small number of nodes.
-    const nodeCount = 42;
-
-    // Deterministic pseudo-random generator.
-    let seed = 17;
-
-    const random = () => {
-      seed =
-        (
-          seed * 9301 +
-          49297
-        ) %
-        233280;
-
-      return seed / 233280;
-    };
-
-    // ========================================================
-    // CREATE NODES
-    // ========================================================
-
-    for (
-      let i = 0;
-      i < nodeCount;
-      i++
-    ) {
-
-      const angle =
-        random() *
-        Math.PI *
-        2;
-
-      const radius =
-        Math.sqrt(
-          random()
-        ) *
-        networkRadius;
-
-      const x =
-        Math.cos(angle) *
-        radius;
-
-      const y =
-        Math.sin(angle) *
-        radius;
-
-      // Slight surface-depth variation.
-      const z =
-        1.35 +
-        random() *
-        0.22;
-
-      nodes.push(
-        new THREE.Vector3(
-          x,
-          y,
-          z,
-        ),
-      );
-    }
-
-    // ========================================================
-    // CONNECT NEARBY NODES
-    // ========================================================
-
-    for (
-      let i = 0;
-      i < nodes.length;
-      i++
-    ) {
-
-      const distances: Array<{
-        index: number;
-        distance: number;
-      }> = [];
-
-      for (
-        let j = 0;
-        j < nodes.length;
-        j++
-      ) {
-
-        if (i === j) continue;
-
-        const distance =
-          nodes[i].distanceTo(
-            nodes[j],
-          );
-
-        distances.push({
-          index: j,
-          distance,
-        });
-      }
-
-      distances.sort(
-        (a, b) =>
-          a.distance -
-          b.distance,
-      );
-
-      // Connect only the closest
-      // 1–2 neighbors.
-      const connections =
-        i % 3 === 0
-          ? 2
-          : 1;
-
-      for (
-        let k = 0;
-        k < connections;
-        k++
-      ) {
-
-        const target =
-          distances[k];
-
-        if (!target) continue;
-
-        const a = Math.min(
-          i,
-          target.index,
-        );
-
-        const b = Math.max(
-          i,
-          target.index,
-        );
-
-        const exists =
-          edges.some(
-            ([x, y]) =>
-              x === a &&
-              y === b,
-          );
-
-        if (
-          !exists &&
-          target.distance < 2.1
-        ) {
-          edges.push([
-            a,
-            b,
-          ]);
-        }
-      }
-    }
-
-    // ========================================================
-    // CREATE EDGE GEOMETRY
-    // ========================================================
-
-    const edgePositions: number[] =
-      [];
-
-    edges.forEach(
-      ([a, b]) => {
-
-        const start =
-          nodes[a];
-
-        const end =
-          nodes[b];
-
-        edgePositions.push(
-          start.x,
-          start.y,
-          start.z,
-
-          end.x,
-          end.y,
-          end.z,
-        );
-      },
-    );
-
-    const edgeGeometry =
-      new THREE.BufferGeometry();
-
-    edgeGeometry.setAttribute(
-      "position",
-      new THREE.Float32BufferAttribute(
-        edgePositions,
-        3,
-      ),
-    );
-
-    // ========================================================
-    // NODE GEOMETRY
-    // ========================================================
-
-    const nodeGeometry =
-      new THREE.SphereGeometry(
-        0.045,
-        8,
-        8,
-      );
-
-    // ========================================================
-    // RETURN
-    // ========================================================
-
-    return {
-      nodes,
-      edgeGeometry,
-      nodeGeometry,
-    };
-
-  }, []);
 
   // ==========================================================
   // 🔥 INNER SOLAR ENERGY
@@ -895,11 +793,16 @@ export const Sun = ({ setRef }: SunProps) => {
       () =>
         new THREE.MeshBasicMaterial({
           color: "#ff9f32",
+
           transparent: true,
+
           opacity: 0.16,
+
           blending:
             THREE.AdditiveBlending,
+
           depthWrite: false,
+
           toneMapped: false,
         }),
       [],
@@ -914,11 +817,16 @@ export const Sun = ({ setRef }: SunProps) => {
       () =>
         new THREE.MeshBasicMaterial({
           color: "#ff2608",
+
           transparent: true,
+
           opacity: 0.11,
+
           blending:
             THREE.AdditiveBlending,
+
           depthWrite: false,
+
           toneMapped: false,
         }),
       [],
@@ -1002,26 +910,30 @@ export const Sun = ({ setRef }: SunProps) => {
             uniform vec3 uColor;
             uniform vec3 uHotColor;
 
+            // ==================================================
+            // ROBUST CORONA HASH
+            // ==================================================
+
             float hash(vec3 p) {
 
-              p =
-                fract(
-                  p *
-                  0.3183099
-                ) *
-                17.0;
-
               return fract(
-                p.x *
-                p.y *
-                p.z *
-                (
-                  p.x +
-                  p.y +
-                  p.z
-                )
+                sin(
+                  dot(
+                    p,
+                    vec3(
+                      127.1,
+                      311.7,
+                      74.7
+                    )
+                  )
+                ) *
+                43758.5453123
               );
             }
+
+            // ==================================================
+            // CORONA NOISE
+            // ==================================================
 
             float noise(vec3 p) {
 
@@ -1161,6 +1073,10 @@ export const Sun = ({ setRef }: SunProps) => {
               );
             }
 
+            // ==================================================
+            // MAIN
+            // ==================================================
+
             void main() {
 
               vec3 normal =
@@ -1189,6 +1105,10 @@ export const Sun = ({ setRef }: SunProps) => {
                   facing,
                   3.6
                 );
+
+              // ==============================================
+              // MOVING CORONA FIELD
+              // ==============================================
 
               vec3 noisePos =
                 normal * 5.5;
@@ -1228,12 +1148,20 @@ export const Sun = ({ setRef }: SunProps) => {
                   turbulence
                 );
 
+              // ==============================================
+              // CORONA COLOR
+              // ==============================================
+
               vec3 color =
                 mix(
                   uColor,
                   uHotColor,
                   stream * 0.45
                 );
+
+              // ==============================================
+              // CORONA ALPHA
+              // ==============================================
 
               float alpha =
                 rim *
@@ -1363,143 +1291,6 @@ export const Sun = ({ setRef }: SunProps) => {
     );
 
   // ==========================================================
-  // ✨ INNER FRESNEL
-  // ==========================================================
-
-  const fresnelMaterial =
-    useMemo(
-      () =>
-        new THREE.ShaderMaterial({
-          transparent: true,
-
-          blending:
-            THREE.AdditiveBlending,
-
-          side: THREE.BackSide,
-
-          depthWrite: false,
-
-          uniforms: {
-            glowColor: {
-              value:
-                new THREE.Color(
-                  "#ff3d0a",
-                ),
-            },
-
-            innerColor: {
-              value:
-                new THREE.Color(
-                  "#ff8b24",
-                ),
-            },
-
-            intensity: {
-              value: 0.30,
-            },
-
-            power: {
-              value: 3.4,
-            },
-          },
-
-          vertexShader: `
-            varying vec3 vNormal;
-            varying vec3 vViewDir;
-
-            void main() {
-
-              vec4 mvPosition =
-                modelViewMatrix *
-                vec4(
-                  position,
-                  1.0
-                );
-
-              vNormal =
-                normalize(
-                  normalMatrix *
-                  normal
-                );
-
-              vViewDir =
-                normalize(
-                  -mvPosition.xyz
-                );
-
-              gl_Position =
-                projectionMatrix *
-                mvPosition;
-            }
-          `,
-
-          fragmentShader: `
-            varying vec3 vNormal;
-            varying vec3 vViewDir;
-
-            uniform vec3 glowColor;
-            uniform vec3 innerColor;
-
-            uniform float intensity;
-            uniform float power;
-
-            void main() {
-
-              float facing =
-                max(
-                  dot(
-                    normalize(
-                      vNormal
-                    ),
-                    normalize(
-                      vViewDir
-                    )
-                  ),
-                  0.0
-                );
-
-              float rim =
-                pow(
-                  1.0 -
-                  facing,
-                  power
-                );
-
-              float inner =
-                pow(
-                  1.0 -
-                  facing,
-                  2.2
-                );
-
-              vec3 color =
-                mix(
-                  innerColor,
-                  glowColor,
-                  rim
-                );
-
-              float alpha =
-                (
-                  rim * 0.75 +
-                  inner * 0.15
-                ) *
-                intensity;
-
-              gl_FragColor =
-                vec4(
-                  color,
-                  alpha
-                );
-            }
-          `,
-
-          toneMapped: false,
-        }),
-      [],
-    );
-
-  // ==========================================================
   // 🎥 SUN ANIMATION
   // ==========================================================
 
@@ -1524,7 +1315,9 @@ export const Sun = ({ setRef }: SunProps) => {
       // 🔥 MAIN PLASMA
       // ======================================================
 
-      if (plasmaRef.current) {
+      if (
+        plasmaRef.current
+      ) {
 
         plasmaRef.current
           .uniforms
@@ -1536,7 +1329,9 @@ export const Sun = ({ setRef }: SunProps) => {
       // ☀️ CORE
       // ======================================================
 
-      if (coreRef.current) {
+      if (
+        coreRef.current
+      ) {
 
         coreRef.current
           .scale
@@ -1604,31 +1399,6 @@ export const Sun = ({ setRef }: SunProps) => {
       }
 
       // ======================================================
-      // 🕸️ SOLAR NETWORK
-      // ======================================================
-
-      if (
-        networkGroupRef.current
-      ) {
-
-        networkGroupRef.current
-          .rotation
-          .z =
-          Math.sin(
-            t * 0.18,
-          ) *
-          0.018;
-
-        networkGroupRef.current
-          .rotation
-          .y =
-          Math.sin(
-            t * 0.12,
-          ) *
-          0.012;
-      }
-
-      // ======================================================
       // 🌌 CORONA
       // ======================================================
 
@@ -1660,40 +1430,6 @@ export const Sun = ({ setRef }: SunProps) => {
           ) *
           0.018;
       }
-
-      // ======================================================
-      // 🕸️ NETWORK NODE PULSE
-      // ======================================================
-
-      if (
-        nodeMaterialRef.current
-      ) {
-
-        nodeMaterialRef.current
-          .opacity =
-          0.55 +
-          Math.sin(
-            t * 2.2,
-          ) *
-          0.12;
-      }
-
-      // ======================================================
-      // 🔗 NETWORK EDGE PULSE
-      // ======================================================
-
-      if (
-        networkMaterialRef.current
-      ) {
-
-        networkMaterialRef.current
-          .opacity =
-          0.20 +
-          Math.sin(
-            t * 1.6,
-          ) *
-          0.04;
-      }
     },
   );
 
@@ -1708,8 +1444,6 @@ export const Sun = ({ setRef }: SunProps) => {
         groupRef.current =
           node;
 
-        // Register Sun
-        // inside planetRefs
         if (
           node &&
           setRef
@@ -1724,80 +1458,6 @@ export const Sun = ({ setRef }: SunProps) => {
         }
       }}
     >
-
-      {/* ====================================================
-          🕸️ SMALL SOLAR NODE NETWORK
-          ==================================================== */}
-
-      <group
-        ref={
-          networkGroupRef
-        }
-      >
-
-        {/* ==================================================
-            🔗 ULTRA THIN EDGES
-            ================================================== */}
-
-        <lineSegments
-          geometry={
-            solarNetwork.edgeGeometry
-          }
-        >
-
-          <lineBasicMaterial
-            ref={
-              networkMaterialRef
-            }
-            color="#ffd45a"
-            transparent
-            opacity={0.20}
-            blending={
-              THREE.AdditiveBlending
-            }
-            depthWrite={false}
-            toneMapped={false}
-          />
-
-        </lineSegments>
-
-        {/* ==================================================
-            ✨ TINY NODES
-            ================================================== */}
-
-        {solarNetwork.nodes.map(
-          (position, index) => (
-
-            <mesh
-              key={index}
-              position={position}
-              geometry={
-                solarNetwork.nodeGeometry
-              }
-            >
-
-              <meshBasicMaterial
-                ref={
-                  index === 0
-                    ? nodeMaterialRef
-                    : undefined
-                }
-                color="#fff1a3"
-                transparent
-                opacity={0.55}
-                blending={
-                  THREE.AdditiveBlending
-                }
-                depthWrite={false}
-                toneMapped={false}
-              />
-
-            </mesh>
-
-          ),
-        )}
-
-      </group>
 
       {/* ====================================================
           ☀️ MAIN SOLAR SURFACE
@@ -1916,32 +1576,6 @@ export const Sun = ({ setRef }: SunProps) => {
           }
           object={
             coronaGlowMaterial
-          }
-          attach="material"
-        />
-
-      </mesh>
-
-      {/* ====================================================
-          ✨ INNER FRESNEL
-          ==================================================== */}
-
-      <mesh>
-
-        <sphereGeometry
-          args={[
-            5.72,
-            64,
-            64,
-          ]}
-        />
-
-        <primitive
-          ref={
-            fresnelRef
-          }
-          object={
-            fresnelMaterial
           }
           attach="material"
         />
