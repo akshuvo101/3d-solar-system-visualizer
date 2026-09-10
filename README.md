@@ -6,8 +6,8 @@ The project combines real-time 3D rendering with a **Keplerian orbital mechanics
 
 ## 🚀 Demo
 
-🌐 **[Live Demo](https://3-d-solar-system-simulation-gilt.vercel.app/)**
-💻 **[GitHub Repository](https://github.com/akshuvo101/3D-Solar-System-Simulation)**
+🌐 **[Live Demo](https://3d-solar-system-visualizer.vercel.app/)**
+💻 **[GitHub Repository](https://github.com/akshuvo101/3d-solar-system-visualizer)**
 
 ## 🖼️ Preview
 
