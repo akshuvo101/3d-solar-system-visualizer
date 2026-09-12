@@ -13,11 +13,14 @@ export const Earth = ({}: EarthProps) => {
      * ============================================================
      * 🌍 EARTH SURFACE MATERIAL
      *
+     * Brightness-enhanced version.
+     *
      * Important:
      * - No UV based terrain noise
      * - No animated surface noise
      * - Uses local spherical direction
-     * - Prevents longitude/column artifacts
+     * - Prevents longitude / column artifacts
+     * - Brighter daylight while preserving night contrast
      * ============================================================
      */
 
@@ -34,11 +37,6 @@ export const Earth = ({}: EarthProps) => {
 
           /*
            * Local spherical direction.
-           *
-           * This is the key fix for the previous
-           * vertical / column-wise artifacts.
-           *
-           * It does not depend on UV coordinates.
            */
           vLocalDirection =
             normalize(position);
@@ -77,14 +75,6 @@ export const Earth = ({}: EarthProps) => {
          * ==========================================================
          * 🌐 STABLE 3D HASH
          * ==========================================================
-         *
-         * Unlike the old UV noise, this works directly on the
-         * spherical surface.
-         *
-         * Therefore:
-         * - no UV seam
-         * - no vertical columns
-         * - no longitude stretching
          */
 
         float hash31(vec3 p) {
@@ -119,9 +109,6 @@ export const Earth = ({}: EarthProps) => {
           vec3 f =
             fract(p);
 
-          /*
-           * Smooth interpolation.
-           */
           f =
             f * f *
             (
@@ -222,11 +209,6 @@ export const Earth = ({}: EarthProps) => {
          * ==========================================================
          * 🌎 FRACTAL BROWNIAN MOTION
          * ==========================================================
-         *
-         * Kept deliberately low-frequency.
-         *
-         * High frequency FBM was one of the reasons the surface
-         * could visually shimmer.
          */
 
         float fbm(vec3 p) {
@@ -269,11 +251,6 @@ export const Earth = ({}: EarthProps) => {
            * ========================================================
            * 🗺️ CONTINENT MASK
            * ========================================================
-           *
-           * Large-scale noise creates broad land masses.
-           *
-           * Threshold is deliberately conservative so Earth
-           * remains ocean-dominant.
            */
 
           float continentBase =
@@ -295,11 +272,6 @@ export const Earth = ({}: EarthProps) => {
             continentBase * 0.78 +
             continentDetail * 0.22;
 
-          /*
-           * Conservative land threshold.
-           *
-           * This prevents the "green planet" look.
-           */
           float land =
             smoothstep(
               0.555,
@@ -311,34 +283,31 @@ export const Earth = ({}: EarthProps) => {
            * ========================================================
            * 🌊 OCEAN
            * ========================================================
+           *
+           * Slightly brighter than the previous version.
            */
 
           vec3 deepOcean =
             vec3(
-              0.002,
-              0.018,
-              0.060
+              0.003,
+              0.024,
+              0.080
             );
 
           vec3 ocean =
             vec3(
-              0.004,
-              0.055,
-              0.145
+              0.006,
+              0.075,
+              0.185
             );
 
           vec3 shallowOcean =
             vec3(
-              0.012,
-              0.125,
-              0.255
+              0.015,
+              0.155,
+              0.310
             );
 
-          /*
-           * Subtle ocean variation.
-           *
-           * Low frequency only.
-           */
           float oceanVariation =
             fbm(
               direction * 5.0 +
@@ -369,7 +338,7 @@ export const Earth = ({}: EarthProps) => {
                 0.90,
                 oceanVariation
               ) *
-              0.35
+              0.38
             );
 
           /*
@@ -388,9 +357,6 @@ export const Earth = ({}: EarthProps) => {
               )
             );
 
-          /*
-           * Mountain / rocky mask.
-           */
           float mountain =
             smoothstep(
               0.66,
@@ -409,11 +375,6 @@ export const Earth = ({}: EarthProps) => {
               direction.y
             );
 
-          /*
-           * Tropical zone.
-           *
-           * Green is limited mostly to warmer + wetter regions.
-           */
           float tropical =
             1.0 -
             smoothstep(
@@ -451,9 +412,6 @@ export const Earth = ({}: EarthProps) => {
               1.0 - moisture
             );
 
-          /*
-           * Keep deserts mostly in warmer latitudes.
-           */
           float desert =
             dryRegion *
             smoothstep(
@@ -465,10 +423,8 @@ export const Earth = ({}: EarthProps) => {
 
           /*
            * ========================================================
-           * 🌲 FOREST / VEGETATION
+           * 🌲 VEGETATION
            * ========================================================
-           *
-           * Forest is intentionally restrained.
            */
 
           float vegetation =
@@ -488,20 +444,22 @@ export const Earth = ({}: EarthProps) => {
            * ========================================================
            * 🪨 ROCK
            * ========================================================
+           *
+           * Slightly brighter land colors.
            */
 
           vec3 rock =
             vec3(
-              0.27,
-              0.26,
-              0.22
+              0.30,
+              0.285,
+              0.245
             );
 
           vec3 rockLight =
             vec3(
-              0.42,
-              0.39,
-              0.31
+              0.48,
+              0.445,
+              0.355
             );
 
           vec3 landRock =
@@ -523,28 +481,25 @@ export const Earth = ({}: EarthProps) => {
 
           vec3 desertColor =
             vec3(
-              0.55,
-              0.36,
-              0.16
+              0.59,
+              0.395,
+              0.18
             );
 
-          /*
-           * Slight sand highlight.
-           */
           desertColor =
             mix(
               desertColor,
               vec3(
-                0.72,
-                0.54,
-                0.30
+                0.76,
+                0.575,
+                0.32
               ),
               smoothstep(
                 0.58,
                 0.82,
                 terrain
               ) *
-              0.35
+              0.38
             );
 
           /*
@@ -555,21 +510,18 @@ export const Earth = ({}: EarthProps) => {
 
           vec3 grassland =
             vec3(
-              0.20,
-              0.30,
-              0.095
+              0.225,
+              0.335,
+              0.105
             );
 
           vec3 forest =
             vec3(
-              0.045,
-              0.18,
-              0.055
+              0.055,
+              0.205,
+              0.065
             );
 
-          /*
-           * Forest is darker and less saturated.
-           */
           vec3 vegetationColor =
             mix(
               grassland,
@@ -590,9 +542,6 @@ export const Earth = ({}: EarthProps) => {
           vec3 landColor =
             landRock;
 
-          /*
-           * Add vegetation.
-           */
           landColor =
             mix(
               landColor,
@@ -600,9 +549,6 @@ export const Earth = ({}: EarthProps) => {
               vegetation * 0.72
             );
 
-          /*
-           * Add desert.
-           */
           landColor =
             mix(
               landColor,
@@ -623,9 +569,6 @@ export const Earth = ({}: EarthProps) => {
               latitude
             );
 
-          /*
-           * Ice slightly varies naturally.
-           */
           float iceVariation =
             fbm(
               direction * 7.0 +
@@ -646,9 +589,9 @@ export const Earth = ({}: EarthProps) => {
 
           vec3 ice =
             vec3(
-              0.78,
-              0.89,
-              0.96
+              0.84,
+              0.93,
+              0.985
             );
 
           /*
@@ -664,9 +607,6 @@ export const Earth = ({}: EarthProps) => {
               land
             );
 
-          /*
-           * Ice should dominate both land and polar ocean.
-           */
           surface =
             mix(
               surface,
@@ -678,8 +618,6 @@ export const Earth = ({}: EarthProps) => {
            * ========================================================
            * ☀️ SUN LIGHT
            * ========================================================
-           *
-           * Sun is at the world origin.
            */
 
           vec3 normal =
@@ -713,7 +651,7 @@ export const Earth = ({}: EarthProps) => {
           float day =
             smoothstep(
               0.015,
-              0.32,
+              0.30,
               diffuse
             );
 
@@ -739,27 +677,35 @@ export const Earth = ({}: EarthProps) => {
 
           /*
            * ========================================================
-           * ☀️ DAYLIGHT
+           * ☀️ BRIGHTER DAYLIGHT
            * ========================================================
+           *
+           * Previous:
+           *   0.18 + daylight * 1.04
+           *
+           * New:
+           *   stronger direct illumination
            */
 
           float daylight =
             pow(
               diffuse,
-              0.72
+              0.68
             );
 
           float dayIntensity =
-            0.18 +
-            daylight *
-            1.04;
+            0.24 +
+            daylight * 1.20;
 
           surface *=
             dayIntensity;
 
           /*
-           * Slight solar warmth.
+           * ========================================================
+           * ☀️ SOLAR WARMTH
+           * ========================================================
            */
+
           vec3 sunlightTint =
             vec3(
               1.0,
@@ -770,10 +716,23 @@ export const Earth = ({}: EarthProps) => {
           surface =
             mix(
               surface,
-              surface *
-              sunlightTint,
-              day * 0.10
+              surface * sunlightTint,
+              day * 0.13
             );
+
+          /*
+           * ========================================================
+           * ✨ SUBTLE DAYLIGHT BOOST
+           * ========================================================
+           *
+           * Gives Earth a more visually readable appearance
+           * without simply multiplying the entire planet.
+           */
+
+          surface +=
+            surface *
+            day *
+            0.065;
 
           /*
            * ========================================================
@@ -783,41 +742,45 @@ export const Earth = ({}: EarthProps) => {
 
           vec3 twilightColor =
             vec3(
-              0.38,
-              0.15,
-              0.045
+              0.40,
+              0.16,
+              0.050
             );
 
           surface +=
             twilightColor *
             twilight *
-            0.045;
+            0.052;
 
           /*
            * ========================================================
            * 🌑 NIGHT SIDE
            * ========================================================
            *
-           * Keep the night side dark but still recognizable.
+           * Slightly lifted from the previous version so Earth
+           * remains visible in cinematic shots.
            */
 
           surface *=
-            0.26 +
-            day * 0.74;
+            0.31 +
+            day * 0.69;
 
           /*
-           * Very subtle blue atmospheric ambient.
+           * ========================================================
+           * 🌌 NIGHT AMBIENT
+           * ========================================================
            */
+
           surface +=
             vec3(
-              0.002,
-              0.007,
-              0.020
+              0.003,
+              0.009,
+              0.026
             )
             *
             night
             *
-            0.42;
+            0.55;
 
           /*
            * ========================================================
@@ -834,23 +797,22 @@ export const Earth = ({}: EarthProps) => {
             (
               oceanMask *
               night *
-              0.12
+              0.09
             );
 
           /*
            * ========================================================
-           * ✨ FINAL STABILITY
+           * ✨ FINAL VISUAL LIFT
            * ========================================================
            *
-           * No high-frequency animated detail.
-           * This helps eliminate shimmer/flicker.
+           * Prevents very dark surfaces from becoming visually lost.
            */
 
           surface =
             max(
               surface,
               vec3(
-                0.001
+                0.0015
               )
             );
 
@@ -870,10 +832,7 @@ export const Earth = ({}: EarthProps) => {
      * ============================================================
      * ☁️ CLOUD MATERIAL
      *
-     * Static spherical cloud pattern.
-     *
-     * The mesh itself rotates slowly, so the shader does not need
-     * animated noise. This removes crawling/flickering artifacts.
+     * Brighter and slightly more visible cloud layer.
      * ============================================================
      */
 
@@ -881,10 +840,6 @@ export const Earth = ({}: EarthProps) => {
         return new THREE.ShaderMaterial({
             transparent: true,
 
-            /*
-             * Clouds don't write depth.
-             * This avoids hard depth conflicts with the Earth.
-             */
             depthWrite: false,
 
             depthTest: true,
@@ -1104,6 +1059,7 @@ export const Earth = ({}: EarthProps) => {
           /*
            * Large cloud formations.
            */
+
           float largeClouds =
             cloudFbm(
               direction * 2.7 +
@@ -1117,6 +1073,7 @@ export const Earth = ({}: EarthProps) => {
           /*
            * Secondary detail.
            */
+
           float cloudDetail =
             noise3D(
               direction * 7.0 +
@@ -1132,20 +1089,20 @@ export const Earth = ({}: EarthProps) => {
             cloudDetail * 0.18;
 
           /*
-           * Soft cloud threshold.
-           *
-           * Avoid very thin noisy pixels.
+           * Slightly stronger cloud definition.
            */
+
           clouds =
             smoothstep(
-              0.48,
-              0.67,
+              0.47,
+              0.65,
               clouds
             );
 
           /*
-           * Slightly reduce clouds near poles.
+           * Reduce clouds near poles.
            */
+
           float latitude =
             abs(
               direction.y
@@ -1188,32 +1145,30 @@ export const Earth = ({}: EarthProps) => {
               0.0
             );
 
-          /*
-           * Clouds are bright on the day side.
-           */
           float cloudLight =
-            0.10 +
+            0.13 +
             pow(
               sunlight,
-              0.72
+              0.68
             ) *
-            0.90;
+            0.96;
 
           /*
            * Cloud colors.
            */
+
           vec3 cloudDay =
             vec3(
-              0.92,
-              0.965,
+              0.96,
+              0.985,
               1.0
             );
 
           vec3 cloudNight =
             vec3(
-              0.018,
-              0.032,
-              0.060
+              0.022,
+              0.040,
+              0.075
             );
 
           vec3 cloudColor =
@@ -1228,8 +1183,9 @@ export const Earth = ({}: EarthProps) => {
             );
 
           /*
-           * Subtle silver edge highlight.
+           * Silver edge highlight.
            */
+
           float highlight =
             pow(
               sunlight,
@@ -1238,26 +1194,22 @@ export const Earth = ({}: EarthProps) => {
 
           cloudColor +=
             vec3(
-              0.055,
               0.065,
-              0.075
+              0.075,
+              0.085
             )
             *
             highlight;
 
           /*
-           * Final opacity.
-           *
-           * Kept controlled so clouds don't hide the continents.
+           * Slightly stronger cloud visibility.
            */
+
           float alpha =
             clouds *
-            0.30 *
+            0.33 *
             cloudLight;
 
-          /*
-           * Remove extremely weak fragments.
-           */
           if(alpha < 0.008) {
             discard;
           }
@@ -1275,6 +1227,8 @@ export const Earth = ({}: EarthProps) => {
     /*
      * ============================================================
      * 🌫️ ATMOSPHERE
+     *
+     * Slightly stronger blue atmospheric rim for more visual impact.
      * ============================================================
      */
 
@@ -1300,11 +1254,11 @@ export const Earth = ({}: EarthProps) => {
                 },
 
                 intensity: {
-                    value: 0.25,
+                    value: 0.30,
                 },
 
                 power: {
-                    value: 4.2,
+                    value: 4.0,
                 },
             },
 
@@ -1385,8 +1339,7 @@ export const Earth = ({}: EarthProps) => {
 
           float fresnel =
             pow(
-              1.0 -
-              viewDot,
+              1.0 - viewDot,
               power
             );
 
@@ -1413,30 +1366,32 @@ export const Earth = ({}: EarthProps) => {
           float sunScatter =
             pow(
               sunLight,
-              0.58
+              0.55
             );
 
           /*
-           * Stronger blue around illuminated limb.
+           * Stronger illuminated rim.
            */
+
           float illuminatedRim =
             fresnel *
             sunScatter;
 
           /*
-           * Very subtle night-side glow.
+           * Very subtle night-side atmospheric glow.
            */
+
           float nightGlow =
             fresnel *
-            0.11;
+            0.13;
 
           float finalGlow =
             (
               fresnel *
-              0.68
+              0.72
               +
               illuminatedRim *
-              0.72
+              0.78
               +
               nightGlow
             )
@@ -1446,10 +1401,11 @@ export const Earth = ({}: EarthProps) => {
           /*
            * Keep center transparent.
            */
+
           finalGlow =
             smoothstep(
-              0.015,
-              0.64,
+              0.012,
+              0.62,
               finalGlow
             );
 
@@ -1467,28 +1423,18 @@ export const Earth = ({}: EarthProps) => {
      * ============================================================
      * 🌀 ANIMATION
      *
-     * IMPORTANT:
-     *
      * Earth itself is NOT rotated here.
+     * Planet.tsx controls astronomical rotation.
      *
-     * Planet.tsx controls the absolute astronomical rotation.
-     *
-     * Only clouds have a very slow independent atmospheric motion.
+     * Only clouds receive a very slow independent motion.
      * ============================================================
      */
 
     useFrame(
-        ({ clock }, delta) => {
+        ({}, delta) => {
+
             /*
              * ☁️ Very slow cloud drift.
-             *
-             * This is intentionally independent from Earth rotation.
-             *
-             * The old version used:
-             *
-             * rotationSpeed * 1.12
-             *
-             * which could fight with the Planet rotation system.
              */
             if (cloudRef.current) {
                 cloudRef.current.rotation.y +=
@@ -1496,12 +1442,7 @@ export const Earth = ({}: EarthProps) => {
             }
 
             /*
-             * 🌫️ Atmosphere remains static.
-             *
-             * No pulsing scale.
-             *
-             * This removes subtle edge jitter caused by constantly
-             * changing the shell size.
+             * 🌫️ Atmosphere remains almost static.
              */
             if (atmosphereRef.current) {
                 atmosphereRef.current.rotation.y +=
@@ -1512,6 +1453,7 @@ export const Earth = ({}: EarthProps) => {
 
     return (
         <group>
+
             {/* ======================================================
                 🌍 EARTH SURFACE
                 ====================================================== */}
@@ -1574,6 +1516,7 @@ export const Earth = ({}: EarthProps) => {
                     attach="material"
                 />
             </Sphere>
+
         </group>
     );
 };

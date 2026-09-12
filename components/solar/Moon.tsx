@@ -46,7 +46,6 @@ const SHADOW_SOFTNESS = 0.22;
 
 const MOON_ORBIT_SCALE = 0.62;
 
-// Minimum distance from Sun required for a valid shadow caster.
 const MIN_OCCLUDER_DISTANCE = 0.001;
 
 // ============================================================
@@ -59,11 +58,9 @@ export const Moon = ({
 }: MoonProps) => {
   const ref = useRef<THREE.Mesh>(null);
 
-  /*
-   * ============================================================
-   * 🌑 PREMIUM PROCEDURAL MOON MATERIAL
-   * ============================================================
-   */
+  // ==========================================================
+  // 🌑 PREMIUM PROCEDURAL LUNAR MATERIAL
+  // ==========================================================
 
   const moonMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
@@ -76,23 +73,20 @@ export const Moon = ({
           value: SUN_POSITION.clone(),
         },
 
-        // ======================================================
-        // 🌑 SOLAR OCCLUSION
-        // ======================================================
-
         uShadow: {
           value: 0,
         },
       },
 
       vertexShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
+        varying vec3 vLocalPosition;
         varying vec3 vWorldPosition;
+        varying vec3 vWorldNormal;
 
         void main() {
 
-          vUv = uv;
+          vLocalPosition =
+            normalize(position);
 
           vec4 worldPosition =
             modelMatrix *
@@ -104,7 +98,7 @@ export const Moon = ({
           vWorldPosition =
             worldPosition.xyz;
 
-          vNormal =
+          vWorldNormal =
             normalize(
               mat3(modelMatrix) *
               normal
@@ -121,9 +115,9 @@ export const Moon = ({
       `,
 
       fragmentShader: `
-        varying vec2 vUv;
-        varying vec3 vNormal;
+        varying vec3 vLocalPosition;
         varying vec3 vWorldPosition;
+        varying vec3 vWorldNormal;
 
         uniform float uTime;
         uniform vec3 uSunPosition;
@@ -133,86 +127,195 @@ export const Moon = ({
         // HASH
         // ======================================================
 
-        float hash(vec2 p) {
+        float hash(vec3 p) {
+
+          p =
+            fract(
+              p * 0.3183099 +
+              vec3(
+                0.1,
+                0.2,
+                0.3
+              )
+            );
+
+          p *= 17.0;
 
           return fract(
-            sin(
-              dot(
-                p,
-                vec2(
-                  127.1,
-                  311.7
-                )
-              )
-            ) *
-            43758.5453123
+            p.x *
+            p.y *
+            p.z *
+            (
+              p.x +
+              p.y +
+              p.z
+            )
           );
         }
 
         // ======================================================
-        // NOISE
+        // 3D VALUE NOISE
         // ======================================================
 
-        float noise(vec2 p) {
+        float noise(vec3 p) {
 
-          vec2 i = floor(p);
-          vec2 f = fract(p);
+          vec3 i =
+            floor(p);
 
-          float a = hash(i);
+          vec3 f =
+            fract(p);
 
-          float b =
+          f =
+            f *
+            f *
+            (
+              3.0 -
+              2.0 * f
+            );
+
+          float n000 =
             hash(
               i +
-              vec2(
+              vec3(
+                0.0,
+                0.0,
+                0.0
+              )
+            );
+
+          float n100 =
+            hash(
+              i +
+              vec3(
+                1.0,
+                0.0,
+                0.0
+              )
+            );
+
+          float n010 =
+            hash(
+              i +
+              vec3(
+                0.0,
                 1.0,
                 0.0
               )
             );
 
-          float c =
+          float n110 =
             hash(
               i +
-              vec2(
+              vec3(
+                1.0,
+                1.0,
+                0.0
+              )
+            );
+
+          float n001 =
+            hash(
+              i +
+              vec3(
+                0.0,
                 0.0,
                 1.0
               )
             );
 
-          float d =
+          float n101 =
             hash(
               i +
-              vec2(
+              vec3(
+                1.0,
+                0.0,
+                1.0
+              )
+            );
+
+          float n011 =
+            hash(
+              i +
+              vec3(
+                0.0,
                 1.0,
                 1.0
               )
             );
 
-          vec2 u =
-            f *
-            f *
-            (3.0 - 2.0 * f);
+          float n111 =
+            hash(
+              i +
+              vec3(
+                1.0,
+                1.0,
+                1.0
+              )
+            );
 
-          return mix(a, b, u.x)
-            +
-            (c - a) *
-            u.y *
-            (1.0 - u.x)
-            +
-            (d - b) *
-            u.x *
-            u.y;
+          float x00 =
+            mix(
+              n000,
+              n100,
+              f.x
+            );
+
+          float x10 =
+            mix(
+              n010,
+              n110,
+              f.x
+            );
+
+          float x01 =
+            mix(
+              n001,
+              n101,
+              f.x
+            );
+
+          float x11 =
+            mix(
+              n011,
+              n111,
+              f.x
+            );
+
+          float y0 =
+            mix(
+              x00,
+              x10,
+              f.y
+            );
+
+          float y1 =
+            mix(
+              x01,
+              x11,
+              f.y
+            );
+
+          return mix(
+            y0,
+            y1,
+            f.z
+          );
         }
 
         // ======================================================
         // FBM
         // ======================================================
 
-        float fbm(vec2 p) {
+        float fbm(vec3 p) {
 
           float value = 0.0;
           float amplitude = 0.5;
 
-          for(int i = 0; i < 6; i++) {
+          for(
+            int i = 0;
+            i < 6;
+            i++
+          ) {
 
             value +=
               noise(p) *
@@ -226,48 +329,114 @@ export const Moon = ({
         }
 
         // ======================================================
-        // CRATER
+        // RIDGED TERRAIN
         // ======================================================
 
-        float crater(
-          vec2 uv,
-          vec2 center,
-          float radius
-        ) {
+        float ridged(vec3 p) {
 
-          float d =
-            distance(
-              uv,
-              center
-            );
-
-          float rim =
-            smoothstep(
-              radius,
-              radius * 0.72,
-              d
-            );
-
-          float inner =
-            smoothstep(
-              radius * 0.72,
-              radius * 0.28,
-              d
-            );
-
-          float centerDepth =
-            smoothstep(
-              radius * 0.32,
-              0.0,
-              d
-            );
+          float n =
+            fbm(p);
 
           return
-            rim * 0.30
-            -
-            inner * 0.25
-            -
-            centerDepth * 0.14;
+            1.0 -
+            abs(
+              n * 2.0 -
+              1.0
+            );
+        }
+
+        // ======================================================
+        // CRATER FIELD
+        //
+        // Creates irregular crater-like depressions from
+        // layered procedural noise.
+        // ======================================================
+
+        float craterField(vec3 p) {
+
+          float large =
+            ridged(
+              p * 4.2 +
+              vec3(
+                1.7,
+                -2.4,
+                3.1
+              )
+            );
+
+          float medium =
+            ridged(
+              p * 8.5 +
+              vec3(
+                -4.1,
+                2.2,
+                1.3
+              )
+            );
+
+          float small =
+            ridged(
+              p * 17.0 +
+              vec3(
+                2.6,
+                5.1,
+                -3.7
+              )
+            );
+
+          float craterPattern =
+            large * 0.58 +
+            medium * 0.29 +
+            small * 0.13;
+
+          return craterPattern;
+        }
+
+        // ======================================================
+        // LUNAR HEIGHT
+        // ======================================================
+
+        float lunarHeight(vec3 p) {
+
+          float terrain =
+            fbm(
+              p * 3.8
+            );
+
+          float roughness =
+            fbm(
+              p * 10.0 +
+              vec3(
+                3.1,
+                -1.7,
+                2.4
+              )
+            );
+
+          float crater =
+            craterField(p);
+
+          // Large-scale lunar terrain.
+          float height =
+            terrain * 0.060;
+
+          // Irregular crater relief.
+          height +=
+            (
+              crater -
+              0.50
+            ) *
+            0.075;
+
+          // Smaller surface roughness.
+          height +=
+            (
+              roughness -
+              0.50
+            ) *
+            0.022;
+
+          return height;
         }
 
         // ======================================================
@@ -276,72 +445,43 @@ export const Moon = ({
 
         void main() {
 
-          vec2 uv = vUv;
-
-          // ====================================================
-          // 🪨 LUNAR PALETTE
-          // ====================================================
-
-          vec3 deepRock =
-            vec3(
-              0.105,
-              0.105,
-              0.10
-            );
-
-          vec3 darkRock =
-            vec3(
-              0.19,
-              0.19,
-              0.18
-            );
-
-          vec3 midRock =
-            vec3(
-              0.34,
-              0.34,
-              0.32
-            );
-
-          vec3 lightRock =
-            vec3(
-              0.50,
-              0.49,
-              0.46
-            );
-
-          vec3 brightRock =
-            vec3(
-              0.64,
-              0.63,
-              0.59
+          vec3 p =
+            normalize(
+              vLocalPosition
             );
 
           // ====================================================
-          // 🪨 LARGE TERRAIN
+          // 🪨 LUNAR SURFACE
           // ====================================================
 
-          float largeTerrain =
+          float macro =
             fbm(
-              uv * 4.2
+              p * 3.2
             );
 
-          vec3 surface =
-            mix(
-              darkRock,
-              midRock,
-              largeTerrain
-            );
-
-          surface =
-            mix(
-              surface,
-              lightRock,
-              smoothstep(
-                0.56,
-                0.79,
-                largeTerrain
+          float terrain =
+            fbm(
+              p * 6.8 +
+              vec3(
+                2.1,
+                -1.3,
+                4.2
               )
+            );
+
+          float fine =
+            fbm(
+              p * 18.0 +
+              vec3(
+                -3.4,
+                1.7,
+                2.8
+              )
+            );
+
+          float micro =
+            noise(
+              p * 42.0
             );
 
           // ====================================================
@@ -350,168 +490,221 @@ export const Moon = ({
 
           float mariaNoise =
             fbm(
-              uv * 2.8 +
-              vec2(
-                3.4,
-                1.8
+              p * 2.3 +
+              vec3(
+                4.7,
+                -2.2,
+                1.5
               )
             );
 
           float maria =
             smoothstep(
-              0.38,
-              0.55,
+              0.43,
+              0.61,
               mariaNoise
+            );
+
+          // ====================================================
+          // 🎨 REALISTIC LUNAR PALETTE
+          // ====================================================
+
+          vec3 regolithDark =
+            vec3(
+              0.095,
+              0.092,
+              0.086
+            );
+
+          vec3 regolith =
+            vec3(
+              0.185,
+              0.181,
+              0.168
+            );
+
+          vec3 regolithMid =
+            vec3(
+              0.285,
+              0.278,
+              0.255
+            );
+
+          vec3 regolithLight =
+            vec3(
+              0.405,
+              0.395,
+              0.365
+            );
+
+          vec3 highland =
+            vec3(
+              0.525,
+              0.510,
+              0.470
+            );
+
+          // ====================================================
+          // 🪨 TERRAIN COLOR MIX
+          // ====================================================
+
+          vec3 surface =
+            mix(
+              regolithDark,
+              regolith,
+              macro
             );
 
           surface =
             mix(
               surface,
-              vec3(
-                0.145,
-                0.145,
-                0.135
-              ),
-              maria * 0.30
-            );
-
-          // ====================================================
-          // 🕳️ MAJOR CRATERS
-          // ====================================================
-
-          float craters = 0.0;
-
-          craters += crater(
-            uv,
-            vec2(0.18, 0.73),
-            0.082
-          );
-
-          craters += crater(
-            uv,
-            vec2(0.34, 0.30),
-            0.060
-          );
-
-          craters += crater(
-            uv,
-            vec2(0.51, 0.64),
-            0.095
-          );
-
-          craters += crater(
-            uv,
-            vec2(0.68, 0.40),
-            0.066
-          );
-
-          craters += crater(
-            uv,
-            vec2(0.81, 0.75),
-            0.050
-          );
-
-          craters += crater(
-            uv,
-            vec2(0.12, 0.43),
-            0.042
-          );
-
-          craters += crater(
-            uv,
-            vec2(0.58, 0.18),
-            0.048
-          );
-
-          craters += crater(
-            uv,
-            vec2(0.88, 0.25),
-            0.055
-          );
-
-          craters += crater(
-            uv,
-            vec2(0.43, 0.87),
-            0.038
-          );
-
-          craters += crater(
-            uv,
-            vec2(0.73, 0.12),
-            0.034
-          );
-
-          surface += craters;
-
-          // ====================================================
-          // 🕳️ SECONDARY CRATERS
-          // ====================================================
-
-          float craterNoise =
-            fbm(
-              uv * 22.0
-            );
-
-          float secondaryCraters =
-            smoothstep(
-              0.68,
-              0.86,
-              craterNoise
-            );
-
-          surface -=
-            secondaryCraters *
-            0.055;
-
-          // ====================================================
-          // 🪨 FINE ROCK
-          // ====================================================
-
-          float fineRock =
-            fbm(
-              uv * 38.0
-            );
-
-          surface +=
-            (fineRock - 0.5) *
-            0.040;
-
-          // ====================================================
-          // 🪨 MICRO IMPACTS
-          // ====================================================
-
-          float microNoise =
-            noise(
-              uv * 85.0
-            );
-
-          surface +=
-            (microNoise - 0.5) *
-            0.018;
-
-          // ====================================================
-          // 🌫️ DUST
-          // ====================================================
-
-          float dust =
-            fbm(
-              uv * 13.0 +
-              vec2(
-                1.7,
-                4.1
+              regolithMid,
+              smoothstep(
+                0.36,
+                0.63,
+                terrain
               )
             );
 
           surface =
             mix(
               surface,
-              surface * 1.08,
+              regolithLight,
+              smoothstep(
+                0.58,
+                0.82,
+                macro *
+                0.72 +
+                terrain *
+                0.28
+              )
+            );
+
+          surface =
+            mix(
+              surface,
+              highland,
+              smoothstep(
+                0.68,
+                0.91,
+                terrain
+              ) *
+              0.38
+            );
+
+          // ====================================================
+          // 🌑 MARIA DARKENING
+          // ====================================================
+
+          vec3 mariaColor =
+            vec3(
+              0.125,
+              0.122,
+              0.114
+            );
+
+          surface =
+            mix(
+              surface,
+              mariaColor,
+              maria * 0.48
+            );
+
+          // ====================================================
+          // 🕳️ CRATER RELIEF
+          // ====================================================
+
+          float crater =
+            craterField(p);
+
+          float craterDark =
+            smoothstep(
+              0.58,
+              0.78,
+              crater
+            );
+
+          float craterRim =
+            smoothstep(
+              0.43,
+              0.58,
+              crater
+            ) *
+            (
+              1.0 -
+              smoothstep(
+                0.78,
+                0.92,
+                crater
+              )
+            );
+
+          // Crater floors.
+          surface *=
+            1.0 -
+            craterDark *
+            0.22;
+
+          // Raised crater rims.
+          surface +=
+            vec3(
+              0.035,
+              0.034,
+              0.030
+            ) *
+            craterRim;
+
+          // ====================================================
+          // 🪨 FINE REGOLITH
+          // ====================================================
+
+          surface +=
+            (
+              fine -
+              0.5
+            ) *
+            0.055;
+
+          // ====================================================
+          // 🪨 MICRO IMPACT DETAIL
+          // ====================================================
+
+          surface +=
+            (
+              micro -
+              0.5
+            ) *
+            0.025;
+
+          // ====================================================
+          // 🌫️ DUST / POWDER VARIATION
+          // ====================================================
+
+          float dust =
+            fbm(
+              p * 13.0 +
+              vec3(
+                1.4,
+                3.7,
+                -2.1
+              )
+            );
+
+          surface =
+            mix(
+              surface,
+              surface *
+              vec3(
+                1.035,
+                1.025,
+                1.010
+              ),
               smoothstep(
                 0.60,
-                0.85,
+                0.88,
                 dust
               ) *
-              0.20
+              0.28
             );
 
           // ====================================================
@@ -524,9 +717,14 @@ export const Moon = ({
               vWorldPosition
             );
 
+          vec3 baseNormal =
+            normalize(
+              vWorldNormal
+            );
+
           float NdotL =
             dot(
-              normalize(vNormal),
+              baseNormal,
               moonToSun
             );
 
@@ -537,71 +735,170 @@ export const Moon = ({
             );
 
           // ====================================================
-          // 🌑 PLANET SHADOW
+          // ⛰️ PROCEDURAL BUMP NORMAL
           // ====================================================
 
-          /*
-           * uShadow:
-           *
-           * 0 = full sunlight
-           * 1 = full planetary shadow
-           *
-           * The CPU calculates the large-scale eclipse.
-           */
+          // Build an approximate tangent basis.
+          vec3 reference =
+            abs(baseNormal.y) < 0.92
+              ? vec3(0.0, 1.0, 0.0)
+              : vec3(1.0, 0.0, 0.0);
 
-          float directLight =
-            diffuse *
-            (
-              1.0 -
-              uShadow
+          vec3 tangent =
+            normalize(
+              cross(
+                reference,
+                baseNormal
+              )
+            );
+
+          vec3 bitangent =
+            normalize(
+              cross(
+                baseNormal,
+                tangent
+              )
+            );
+
+          float bumpStep =
+            0.018;
+
+          vec3 sampleT =
+            normalize(
+              p +
+              tangent *
+              bumpStep
+            );
+
+          vec3 sampleB =
+            normalize(
+              p +
+              bitangent *
+              bumpStep
+            );
+
+          float h =
+            lunarHeight(p);
+
+          float hT =
+            lunarHeight(sampleT);
+
+          float hB =
+            lunarHeight(sampleB);
+
+          float dT =
+            hT -
+            h;
+
+          float dB =
+            hB -
+            h;
+
+          vec3 bumpedNormal =
+            normalize(
+              baseNormal -
+              tangent *
+              dT *
+              2.8 -
+              bitangent *
+              dB *
+              2.8
+            );
+
+          // Blend bump strength.
+          vec3 finalNormal =
+            normalize(
+              mix(
+                baseNormal,
+                bumpedNormal,
+                0.72
+              )
             );
 
           // ====================================================
-          // 🌗 DAY
+          // ☀️ REALISTIC DIFFUSE LIGHTING
+          // ====================================================
+
+          float directLight =
+            dot(
+              finalNormal,
+              moonToSun
+            );
+
+          directLight =
+            max(
+              directLight,
+              0.0
+            );
+
+          directLight *=
+            1.0 -
+            uShadow;
+
+          // ====================================================
+          // 🌗 SOFT TERMINATOR
           // ====================================================
 
           float day =
             smoothstep(
-              0.012,
-              0.38,
+              0.015,
+              0.42,
               directLight
             );
-
-          // ====================================================
-          // 🌅 TERMINATOR
-          // ====================================================
 
           float twilight =
             smoothstep(
               0.0,
-              0.20,
+              0.24,
               directLight
-            )
-            *
+            ) *
             (
               1.0 -
               smoothstep(
-                0.20,
-                0.46,
+                0.24,
+                0.50,
                 directLight
               )
             );
 
           // ====================================================
-          // ☀️ SUBTLE SUN TINT
+          // 🌑 NIGHT SIDE
           // ====================================================
 
-          surface =
-            mix(
-              surface,
-              surface *
-              vec3(
-                1.045,
-                1.04,
-                1.025
-              ),
-              day * 0.18
+          float night =
+            1.0 -
+            day;
+
+          // ====================================================
+          // 🌍 SUBTLE EARTHSHINE
+          // ====================================================
+
+          vec3 earthshine =
+            vec3(
+              0.008,
+              0.012,
+              0.018
             );
+
+          float earthshineAmount =
+            pow(
+              night,
+              1.65
+            ) *
+            0.72;
+
+          // ====================================================
+          // ☀️ SOLAR RESPONSE
+          // ====================================================
+
+          // Natural lunar surfaces are not highly reflective.
+          float diffuseStrength =
+            0.46 +
+            day *
+            0.54;
+
+          surface *=
+            diffuseStrength;
 
           // ====================================================
           // 🌅 TERMINATOR REFLECTION
@@ -609,51 +906,78 @@ export const Moon = ({
 
           surface +=
             vec3(
-              0.012,
-              0.014,
-              0.018
+              0.010,
+              0.011,
+              0.012
             ) *
             twilight;
 
           // ====================================================
-          // 🌗 DAY / NIGHT BALANCE
+          // 🌑 NIGHT SIDE EARTHSHINE
           // ====================================================
-
-          surface *=
-            0.27 +
-            day * 0.73;
-
-          // ====================================================
-          // 🌑 DEEP NIGHT
-          // ====================================================
-
-          float night =
-            1.0 -
-            day;
-
-          surface *=
-            1.0 -
-            night * 0.10;
 
           surface +=
-            vec3(
-              0.0025,
-              0.0025,
-              0.0035
-            ) *
-            night;
+            earthshine *
+            earthshineAmount;
 
           // ====================================================
-          // ✨ FINAL
+          // 🌘 ECLIPSE DARKENING
+          // ====================================================
+
+          surface *=
+            1.0 -
+            uShadow *
+            0.34;
+
+          // ====================================================
+          // ✨ EDGE / RIM RESPONSE
+          // ====================================================
+
+          vec3 viewDirection =
+            normalize(
+              cameraPosition -
+              vWorldPosition
+            );
+
+          float rim =
+            1.0 -
+            max(
+              dot(
+                finalNormal,
+                viewDirection
+              ),
+              0.0
+            );
+
+          rim =
+            pow(
+              rim,
+              4.5
+            );
+
+          // Very subtle lunar atmospheric-looking
+          // edge illumination — not a glow.
+          surface +=
+            vec3(
+              0.018,
+              0.018,
+              0.017
+            ) *
+            rim *
+            day *
+            0.12;
+
+          // ====================================================
+          // 🎨 FINAL LUNAR TONAL BALANCE
           // ====================================================
 
           surface =
             max(
               surface,
               vec3(
-                0.002,
-                0.002,
-                0.002
+                0.0025,
+                0.0025,
+                0.0025
               )
             );
 
@@ -699,7 +1023,8 @@ export const Moon = ({
         return parent;
       }
 
-      parent = parent.parent;
+      parent =
+        parent.parent;
     }
 
     return null;
@@ -729,7 +1054,6 @@ export const Moon = ({
       sunToPlanet,
       sunToMoon,
       axisPoint,
-      planetToMoon,
     } = shadowVectors.current;
 
     moon.copy(
@@ -835,16 +1159,12 @@ export const Moon = ({
       // ☀️ FINITE SUN → SHADOW CONE
       // ========================================================
 
-      /*
-       * The shadow cone gradually narrows as it travels
-       * away from the occluding planet.
-       */
-
       const shadowLength =
         planetDistance *
         planetRadius /
         Math.max(
-          SUN_RADIUS - planetRadius,
+          SUN_RADIUS -
+            planetRadius,
           0.001
         );
 
@@ -859,14 +1179,14 @@ export const Moon = ({
       const umbraRadius =
         Math.max(
           planetRadius *
-          (
-            1 -
-            distanceBehindPlanet /
-            Math.max(
-              shadowLength,
-              0.001
-            )
-          ),
+            (
+              1 -
+              distanceBehindPlanet /
+                Math.max(
+                  shadowLength,
+                  0.001
+                )
+            ),
           0
         );
 
@@ -892,15 +1212,15 @@ export const Moon = ({
       const penumbraRadius =
         planetRadius +
         distanceBehindPlanet *
-        (
-          SUN_RADIUS +
-          planetRadius
-        ) /
-        Math.max(
-          planetDistance,
-          0.001
-        ) *
-        SHADOW_SOFTNESS;
+          (
+            SUN_RADIUS +
+            planetRadius
+          ) /
+          Math.max(
+            planetDistance,
+            0.001
+          ) *
+          SHADOW_SOFTNESS;
 
       // ========================================================
       // 🌑 FULL UMBRA
@@ -935,14 +1255,8 @@ export const Moon = ({
       }
 
       // ========================================================
-      // 🌑 SPECIAL HOST-PLANET BOOST
+      // 🌑 HOST PLANET BOOST
       // ========================================================
-
-      /*
-       * Moon is physically attached to its host planet.
-       * For visual clarity, the host planet gets a slightly
-       * stronger eclipse contribution.
-       */
 
       const hostPlanet =
         findHostPlanet();
@@ -1001,7 +1315,7 @@ export const Moon = ({
 
     const angle =
       time *
-      orbitalSpeed +
+        orbitalSpeed +
       (moon.angle ?? 0);
 
     // ==========================================================
@@ -1064,7 +1378,6 @@ export const Moon = ({
         worldPosition
       );
 
-    // Smooth but responsive.
     shadowState.current =
       THREE.MathUtils.lerp(
         shadowState.current,
@@ -1092,8 +1405,8 @@ export const Moon = ({
       ref={ref}
       args={[
         moon.size,
-        48,
-        48,
+        64,
+        64,
       ]}
       castShadow
       receiveShadow

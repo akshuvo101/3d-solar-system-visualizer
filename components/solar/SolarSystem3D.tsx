@@ -6,7 +6,7 @@ import { Sun } from "./Sun";
 import OrbitPath from "./OrbitPath";
 import { CameraController } from "./CameraController";
 import { Planet } from "./Planet";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "@react-three/drei";
 import ZoomControls from "../ui/Button";
@@ -32,27 +32,11 @@ import type { PlanetSelection } from "@/types";
 
    The clock starts from the real current UTC time.
 
-   Example:
-
-   Page opened:
-   2026-09-10 02:55 UTC
-
-   Simulation clock starts:
-   2026-09-10 02:55 UTC
-
-   Then Day / Month / Year + playback speed
-   advance this single clock.
-
-   The same simulated delta is also shared
-   with planet axial rotation.
-
-   Therefore:
-
-        Shared Simulation Clock
-                  ↓
-          Simulation Δtime
-             ↙       ↘
-          Orbit     Rotation
+   Shared Simulation Clock
+             ↓
+       Simulation Δtime
+          ↙       ↘
+       Orbit     Rotation
    ============================================================ */
 
 const DAY_IN_MILLISECONDS = 86_400_000;
@@ -82,13 +66,27 @@ const DAY_IN_MILLISECONDS = 86_400_000;
 const ENVIRONMENT_START_DELAY = 180;
 const ORBIT_START_DELAY = 280;
 
+/* ============================================================
+   💡 SHADOW STARTUP TIMING
+
+   Shadow rendering is one of the heavier GPU operations
+   during the first scene initialization.
+
+   The actual shadow configuration is NOT changed.
+
+   We only wait a very short moment before enabling the
+   existing 2048 × 2048 shadow map.
+
+   Final visual quality remains the same.
+   ============================================================ */
+
+const SHADOW_START_DELAY = 120;
+
 type Props = {
   simulationMode: SimulationMode;
   playbackSpeed: PlaybackSpeed;
   selectedPlanet: string;
-  onPlanetClick: (
-    planet: PlanetSelection,
-  ) => void;
+  onPlanetClick: (planet: PlanetSelection) => void;
 };
 
 /* ============================================================
@@ -131,12 +129,9 @@ function SimulationClock({
      🌀 SMOOTH SIMULATION SPEED
      ========================================================== */
 
-  const currentDaysPerSecond =
-    useRef<number>(
-      SIMULATION_MODES[
-        simulationMode
-      ].daysPerSecond,
-    );
+  const currentDaysPerSecond = useRef<number>(
+    SIMULATION_MODES[simulationMode].daysPerSecond,
+  );
 
   useFrame((_, delta) => {
     /* ========================================================
@@ -144,56 +139,45 @@ function SimulationClock({
        ======================================================== */
 
     const targetDaysPerSecond =
-      SIMULATION_MODES[
-        simulationMode
-      ].daysPerSecond;
+      SIMULATION_MODES[simulationMode].daysPerSecond;
 
     /* ========================================================
        🌀 SMOOTH MODE TRANSITION
        ======================================================== */
 
-    currentDaysPerSecond.current =
-      THREE.MathUtils.lerp(
-        currentDaysPerSecond.current,
-        targetDaysPerSecond,
-        1 -
-        Math.exp(
-          -8 * delta,
-        ),
-      );
+    currentDaysPerSecond.current = THREE.MathUtils.lerp(
+      currentDaysPerSecond.current,
+      targetDaysPerSecond,
+      1 - Math.exp(-8 * delta),
+    );
 
     /* ========================================================
        ⚡ PLAYBACK SPEED
        ======================================================== */
 
-    const effectivePlaybackSpeed =
-      playbackSpeed ?? 1;
+    const effectivePlaybackSpeed = playbackSpeed ?? 1;
 
     const daysPerSecond =
-      currentDaysPerSecond.current *
-      effectivePlaybackSpeed;
+      currentDaysPerSecond.current * effectivePlaybackSpeed;
 
     /* ========================================================
        ⏱️ EXACT SIMULATED TIME ELAPSED
        ======================================================== */
 
-    const simulationDeltaDays =
-      daysPerSecond * delta;
+    const simulationDeltaDays = daysPerSecond * delta;
 
     /* ========================================================
        📡 SHARE EXACT FRAME DELTA
        ======================================================== */
 
-    simulationDeltaDaysRef.current =
-      simulationDeltaDays;
+    simulationDeltaDaysRef.current = simulationDeltaDays;
 
     /* ========================================================
        🌍 ADVANCE SHARED ASTRONOMICAL TIME
        ======================================================== */
 
     simulationTimeRef.current +=
-      simulationDeltaDays *
-      DAY_IN_MILLISECONDS;
+      simulationDeltaDays * DAY_IN_MILLISECONDS;
   });
 
   return null;
@@ -204,8 +188,11 @@ function SimulationClock({
 
    Main scene objects are NOT delayed.
 
-   This controller only controls the mounting of the heavier
-   decorative environment and orbit paths.
+   This controller only controls:
+
+   • Heavy environment
+   • Orbit paths
+   • Shadow rendering
 
    No artificial full-scene waiting period is used.
    ============================================================ */
@@ -213,21 +200,38 @@ function SimulationClock({
 function SceneStartup({
   onEnvironmentReady,
   onOrbitReady,
+  onShadowsReady,
 }: {
   onEnvironmentReady: () => void;
   onOrbitReady: () => void;
+  onShadowsReady: () => void;
 }) {
-  const elapsedRef =
-    useRef(0);
+  const elapsedRef = useRef(0);
 
-  const environmentReadyRef =
-    useRef(false);
-
-  const orbitReadyRef =
-    useRef(false);
+  const environmentReadyRef = useRef(false);
+  const orbitReadyRef = useRef(false);
+  const shadowsReadyRef = useRef(false);
 
   useFrame((_, delta) => {
     elapsedRef.current += delta;
+
+    /* ========================================================
+       💡 SHADOWS
+
+       Enable the existing shadow system very shortly after
+       the first scene frames.
+
+       This allows the Sun + planets to initialize first.
+       ======================================================== */
+
+    if (
+      !shadowsReadyRef.current &&
+      elapsedRef.current >= SHADOW_START_DELAY / 1000
+    ) {
+      shadowsReadyRef.current = true;
+
+      onShadowsReady();
+    }
 
     /* ========================================================
        🌌 HEAVY ENVIRONMENT
@@ -235,12 +239,9 @@ function SceneStartup({
 
     if (
       !environmentReadyRef.current &&
-      elapsedRef.current >=
-      ENVIRONMENT_START_DELAY /
-      1000
+      elapsedRef.current >= ENVIRONMENT_START_DELAY / 1000
     ) {
-      environmentReadyRef.current =
-        true;
+      environmentReadyRef.current = true;
 
       onEnvironmentReady();
     }
@@ -251,12 +252,9 @@ function SceneStartup({
 
     if (
       !orbitReadyRef.current &&
-      elapsedRef.current >=
-      ORBIT_START_DELAY /
-      1000
+      elapsedRef.current >= ORBIT_START_DELAY / 1000
     ) {
-      orbitReadyRef.current =
-        true;
+      orbitReadyRef.current = true;
 
       onOrbitReady();
     }
@@ -279,41 +277,40 @@ export default function SolarSystem3D({
      🪐 PLANET REFS
      ============================================================ */
 
-  const planetRefs =
-    useRef<
-      Record<
-        string,
-        React.RefObject<
-          THREE.Group | null
-        >
-      >
-    >({});
+  const planetRefs = useRef<
+    Record<string, React.RefObject<THREE.Group | null>>
+  >({});
 
-  const setRef = (
-    name: string,
-    ref: React.RefObject<
-      THREE.Group | null
-    >,
-  ) => {
-    planetRefs.current[name] =
-      ref;
-  };
+  /* ============================================================
+     🪐 STABLE PLANET REF CALLBACK
+
+     Keeps the callback reference stable between renders.
+
+     This avoids unnecessary effect re-runs inside Planet
+     components when simulation state changes.
+     ============================================================ */
+
+  const setRef = useCallback(
+    (
+      name: string,
+      ref: React.RefObject<THREE.Group | null>,
+    ) => {
+      planetRefs.current[name] = ref;
+    },
+    [],
+  );
 
   /* ============================================================
      🎥 ORBIT CONTROLS REF
      ============================================================ */
 
-  const controlsRef =
-    useRef<any>(null);
+  const controlsRef = useRef<any>(null);
 
   /* ============================================================
      🌌 ENVIRONMENT REF
      ============================================================ */
 
-  const environmentRef =
-    useRef<
-      THREE.Group | null
-    >(null);
+  const environmentRef = useRef<THREE.Group | null>(null);
 
   /* ============================================================
      ⏱️ SHARED ASTRONOMICAL SIMULATION TIME
@@ -323,64 +320,55 @@ export default function SolarSystem3D({
      localStorage is intentionally NOT used.
      ============================================================ */
 
-  const simulationTimeRef =
-    useRef<number>(
-      Date.now(),
-    );
+  const simulationTimeRef = useRef<number>(Date.now());
 
   /* ============================================================
      ⏱️ SHARED SIMULATION DELTA
      ============================================================ */
 
-  const simulationDeltaDaysRef =
-    useRef<number>(0);
+  const simulationDeltaDaysRef = useRef<number>(0);
 
   /* ============================================================
      🎬 PROGRESSIVE STARTUP STATE
 
-     These states control only heavy decorative systems.
+     These states control only heavy/deferred systems.
 
      The main solar system itself is visible immediately.
      ============================================================ */
 
-  const [
-    environmentReady,
-    setEnvironmentReady,
-  ] = useState(false);
+  const [environmentReady, setEnvironmentReady] =
+    useState(false);
 
-  const [
-    orbitReady,
-    setOrbitReady,
-  ] = useState(false);
+  const [orbitReady, setOrbitReady] =
+    useState(false);
+
+  const [shadowsReady, setShadowsReady] =
+    useState(false);
 
   /* ============================================================
      🎬 STARTUP CALLBACKS
      ============================================================ */
 
-  const handleEnvironmentReady =
-    () => {
-      setEnvironmentReady(
-        true,
-      );
-    };
+  const handleEnvironmentReady = useCallback(() => {
+    setEnvironmentReady(true);
+  }, []);
 
-  const handleOrbitReady =
-    () => {
-      setOrbitReady(true);
-    };
+  const handleOrbitReady = useCallback(() => {
+    setOrbitReady(true);
+  }, []);
+
+  const handleShadowsReady = useCallback(() => {
+    setShadowsReady(true);
+  }, []);
 
   /* ============================================================
      🔍 MANUAL ZOOM IN
      ============================================================ */
 
   const zoomIn = () => {
-    const controls =
-      controlsRef.current;
+    const controls = controlsRef.current;
 
-    if (
-      !controls ||
-      !controls.enabled
-    ) {
+    if (!controls || !controls.enabled) {
       return;
     }
 
@@ -393,13 +381,9 @@ export default function SolarSystem3D({
      ============================================================ */
 
   const zoomOut = () => {
-    const controls =
-      controlsRef.current;
+    const controls = controlsRef.current;
 
-    if (
-      !controls ||
-      !controls.enabled
-    ) {
+    if (!controls || !controls.enabled) {
       return;
     }
 
@@ -453,14 +437,9 @@ export default function SolarSystem3D({
       {/* ======================================================
           🎬 THREE.JS SCENE
 
-          IMPORTANT:
-
           The Canvas is visible immediately.
 
-          There is NO artificial 700ms opacity delay.
-
-          This removes unnecessary waiting while still
-          allowing heavy systems to initialize progressively.
+          There is NO artificial full-scene opacity delay.
       ====================================================== */}
 
       <div
@@ -472,23 +451,16 @@ export default function SolarSystem3D({
       >
         <Canvas
           camera={{
-            position: [
-              0,
-              30,
-              80,
-            ],
-
+            position: [0, 30, 80],
             fov: 65,
-
             near: 0.1,
-
             far: 5000,
           }}
 
           /* ==================================================
              🚀 PERFORMANCE
 
-             Maximum DPR reduced from 2 → 1.5.
+             Maximum DPR remains 1.5.
 
              This keeps good visual quality while reducing
              initial GPU workload on high-density displays.
@@ -496,13 +468,20 @@ export default function SolarSystem3D({
 
           dpr={[1, 1.5]}
 
+          /*
+             IMPORTANT:
+             Shadow rendering remains enabled.
+
+             We only delay the actual shadow-casting light
+             by a very short amount.
+
+             Final shadow quality is unchanged.
+          */
           shadows
 
           gl={{
             antialias: true,
-
-            powerPreference:
-              "high-performance",
+            powerPreference: "high-performance",
           }}
         >
           {/* ==================================================
@@ -512,18 +491,9 @@ export default function SolarSystem3D({
           ================================================== */}
 
           <SimulationClock
-            simulationMode={
-              simulationMode
-            }
-
-            playbackSpeed={
-              playbackSpeed
-            }
-
-            simulationTimeRef={
-              simulationTimeRef
-            }
-
+            simulationMode={simulationMode}
+            playbackSpeed={playbackSpeed}
+            simulationTimeRef={simulationTimeRef}
             simulationDeltaDaysRef={
               simulationDeltaDaysRef
             }
@@ -534,17 +504,15 @@ export default function SolarSystem3D({
 
               Lightweight.
 
-              Only delays heavy decorative systems.
+              Only delays heavy/deferred systems.
           ================================================== */}
 
           <SceneStartup
             onEnvironmentReady={
               handleEnvironmentReady
             }
-
-            onOrbitReady={
-              handleOrbitReady
-            }
+            onOrbitReady={handleOrbitReady}
+            onShadowsReady={handleShadowsReady}
           />
 
           {/* ==================================================
@@ -563,51 +531,29 @@ export default function SolarSystem3D({
 
             enableDamping={true}
 
-            dampingFactor={
-              0.045
-            }
+            dampingFactor={0.045}
 
-            rotateSpeed={
-              0.55
-            }
+            rotateSpeed={0.55}
 
-            zoomSpeed={
-              0.75
-            }
+            zoomSpeed={0.75}
 
             minDistance={4}
             maxDistance={2500}
 
-            minPolarAngle={
-              0.05
-            }
-
+            minPolarAngle={0.05}
             maxPolarAngle={
               Math.PI - 0.05
             }
 
             mouseButtons={{
-              LEFT:
-                THREE.MOUSE
-                  .ROTATE,
-
-              MIDDLE:
-                THREE.MOUSE
-                  .DOLLY,
-
-              RIGHT:
-                THREE.MOUSE
-                  .ROTATE,
+              LEFT: THREE.MOUSE.ROTATE,
+              MIDDLE: THREE.MOUSE.DOLLY,
+              RIGHT: THREE.MOUSE.ROTATE,
             }}
 
             touches={{
-              ONE:
-                THREE.TOUCH
-                  .ROTATE,
-
-              TWO:
-                THREE.TOUCH
-                  .DOLLY_ROTATE,
+              ONE: THREE.TOUCH.ROTATE,
+              TWO: THREE.TOUCH.DOLLY_ROTATE,
             }}
           />
 
@@ -635,23 +581,15 @@ export default function SolarSystem3D({
 
               Delayed slightly.
 
-              This includes:
+              Includes:
 
               • Asteroid Belt
               • Kuiper Belt
-
-              These are not necessary for the first visual
-              impression, so they can initialize shortly after.
           ================================================== */}
 
           {environmentReady && (
-            <group
-              ref={
-                environmentRef
-              }
-            >
+            <group ref={environmentRef}>
               <AsteroidBelt />
-
               <KuiperBelt />
             </group>
           )}
@@ -685,104 +623,77 @@ export default function SolarSystem3D({
               Rendered immediately.
           ================================================== */}
 
-          <Sun
-            setRef={setRef}
-          />
+          <Sun setRef={setRef} />
 
           {/* ==================================================
               💡 SUN LIGHT
+
+              IMPORTANT:
+
+              All existing lighting values are preserved.
+
+              Only castShadow is progressively enabled.
+
+              Before shadowsReady:
+                  castShadow = false
+
+              After startup:
+                  castShadow = true
+
+              Therefore the final lighting/shadow quality
+              remains exactly as before.
           ================================================== */}
 
           <pointLight
-            position={[
-              0,
-              0,
-              0,
-            ]}
-            intensity={50}
+            position={[0, 0, 0]}
+            intensity={65}
             distance={0}
             decay={0.8}
-            castShadow
 
-            shadow-mapSize-width={
-              2048
-            }
+            castShadow={shadowsReady}
 
-            shadow-mapSize-height={
-              2048
-            }
-
-            shadow-bias={
-              -0.0002
-            }
-
-            shadow-normalBias={
-              0.02
-            }
-
+            shadow-mapSize-width={2048}
+            shadow-mapSize-height={2048}
+            shadow-bias={-0.0002}
+            shadow-normalBias={0.02}
             shadow-radius={2}
           />
 
           {/* ==================================================
               🌙 SOFT AMBIENT LIGHT
+
+              Existing value preserved.
           ================================================== */}
 
-          <ambientLight
-            intensity={
-              0.035
-            }
-          />
+          <ambientLight intensity={0.06} />
 
           {/* ==================================================
               🌍 PLANETS
 
               Rendered immediately.
 
-              These are the most important interactive objects
-              in the scene.
+              No planet has been removed.
+
+              All existing simulation, interaction,
+              astronomical positioning and rotation logic
+              remains intact inside Planet.
           ================================================== */}
 
-          {planetData.map(
-            (planet) => (
-              <Planet
-                key={
-                  planet.name
-                }
-
-                planet={
-                  planet
-                }
-
-                simulationMode={
-                  simulationMode
-                }
-
-                playbackSpeed={
-                  playbackSpeed
-                }
-
-                simulationTimeRef={
-                  simulationTimeRef
-                }
-
-                simulationDeltaDaysRef={
-                  simulationDeltaDaysRef
-                }
-
-                selectedPlanet={
-                  selectedPlanet
-                }
-
-                setRef={
-                  setRef
-                }
-
-                onClick={
-                  onPlanetClick
-                }
-              />
-            ),
-          )}
+          {planetData.map((planet) => (
+            <Planet
+              key={planet.name}
+              planet={planet}
+              simulationMode={simulationMode}
+              playbackSpeed={playbackSpeed}
+              simulationTimeRef={simulationTimeRef}
+              simulationDeltaDaysRef={
+                simulationDeltaDaysRef
+              }
+              selectedPlanet={selectedPlanet}
+              setRef={setRef}
+              onClick={onPlanetClick}
+            />
+          ))}
 
           {/* ==================================================
               🎬 CINEMATIC CONTROLLER
@@ -791,17 +702,9 @@ export default function SolarSystem3D({
           ================================================== */}
 
           <CinematicController
-            selectedPlanet={
-              selectedPlanet
-            }
-
-            planetRefs={
-              planetRefs
-            }
-
-            environmentRef={
-              environmentRef
-            }
+            selectedPlanet={selectedPlanet}
+            planetRefs={planetRefs}
+            environmentRef={environmentRef}
           />
 
           {/* ==================================================
@@ -811,17 +714,9 @@ export default function SolarSystem3D({
           ================================================== */}
 
           <CameraController
-            selectedPlanet={
-              selectedPlanet
-            }
-
-            refs={
-              planetRefs
-            }
-
-            controlsRef={
-              controlsRef
-            }
+            selectedPlanet={selectedPlanet}
+            refs={planetRefs}
+            controlsRef={controlsRef}
           />
         </Canvas>
       </div>

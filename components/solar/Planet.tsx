@@ -41,16 +41,19 @@ import {
 /* ============================================================
    🪐 PLANET
 
-   Optimized for smooth initial rendering.
+   Initial-render optimized WITHOUT removing any existing logic.
 
    Important goals:
 
-   • Correct astronomical position on the FIRST frame
-   • Correct rotation on the FIRST frame
-   • No visible position jump from origin → planet orbit
+   • Correct astronomical position on FIRST frame
+   • Correct rotation on FIRST frame
+   • Correct axial tilt on FIRST frame
    • Shared simulation clock remains the single source of truth
-   • Axial rotation remains synchronized with orbital time
-   • Shadow setup runs only when the visual hierarchy changes
+   • Moon system remains fully functional
+   • Shadow system remains fully functional
+   • Planet click behavior remains unchanged
+   • Existing planet-specific visual components remain unchanged
+   • Only safe performance optimizations are applied
    ============================================================ */
 
 export const Planet = ({
@@ -65,8 +68,6 @@ export const Planet = ({
 }: PlanetComponentProps) => {
   /* ==========================================================
      🎥 OUTER GROUP
-
-     CinematicController and CameraController use this group.
      ========================================================== */
 
   const groupRef =
@@ -103,7 +104,7 @@ export const Planet = ({
   /* ==========================================================
      🎨 PHYSICAL VISUAL SCALE
 
-     Calculated once per planet.
+     Static value for this planet.
      ========================================================== */
 
   const visualScale =
@@ -112,14 +113,52 @@ export const Planet = ({
     ] ?? 1;
 
   /* ==========================================================
+     🪐 ORBITAL ELEMENTS
+
+     Reused by both initial render and frame updates.
+
+     This avoids repeatedly looking up the same object.
+     ========================================================== */
+
+  const orbitalElements =
+    useMemo(
+      () =>
+        ORBITAL_ELEMENTS[
+          planet.name
+        ],
+      [planet.name],
+    );
+
+  /* ==========================================================
+     📐 ASTRONOMICAL → VISUAL SCALE
+
+     Static for the current planet.
+
+     Previously this calculation was repeated inside
+     useFrame() on every rendered frame.
+
+     It is now calculated once.
+     ========================================================== */
+
+  const astronomicalVisualScale =
+    useMemo(() => {
+      if (!orbitalElements) {
+        return 1;
+      }
+
+      return (
+        planet.distance /
+        orbitalElements.semiMajorAxisAU
+      );
+    }, [
+      planet.distance,
+      orbitalElements,
+    ]);
+
+  /* ==========================================================
      ⏱️ INITIAL SIMULATION DATE
 
-     SolarSystem3D initializes simulationTimeRef from:
-
-     Date.now()
-
-     Therefore this is the exact real-world UTC-based
-     astronomical starting timestamp for this planet.
+     SolarSystem3D initializes this from Date.now().
      ========================================================== */
 
   const initialSimulationDate =
@@ -134,24 +173,17 @@ export const Planet = ({
   /* ==========================================================
      🪐 INITIAL ASTRONOMICAL POSITION
 
-     IMPORTANT:
+     Calculated before the first visible frame.
 
-     Previously the planet started at the default group
-     position [0,0,0] and only received its real position
-     inside useFrame().
+     This prevents:
 
-     That could produce a visible first-frame jump.
+     origin → real position
 
-     Now we calculate the initial position immediately.
+     visual jumping.
      ========================================================== */
 
   const initialPosition =
     useMemo(() => {
-      const orbitalElements =
-        ORBITAL_ELEMENTS[
-          planet.name
-        ];
-
       if (!orbitalElements) {
         return {
           x: 0,
@@ -165,10 +197,6 @@ export const Planet = ({
           planet.name,
           initialSimulationDate,
         );
-
-      const astronomicalVisualScale =
-        planet.distance /
-        orbitalElements.semiMajorAxisAU;
 
       return {
         x:
@@ -185,15 +213,15 @@ export const Planet = ({
       };
     }, [
       planet.name,
-      planet.distance,
       initialSimulationDate,
+      orbitalElements,
+      astronomicalVisualScale,
     ]);
 
   /* ==========================================================
      🧭 INITIAL ROTATION
 
-     The planet already has its correct astronomical rotation
-     phase before the first visible frame.
+     Correct astronomical rotation is applied immediately.
      ========================================================== */
 
   const initialRotation =
@@ -212,7 +240,9 @@ export const Planet = ({
   /* ==========================================================
      🧭 INITIAL AXIAL TILT
 
-     Applied immediately instead of waiting for useFrame().
+     Axial tilt is static for each planet.
+
+     Calculated once instead of once per frame.
      ========================================================== */
 
   const initialAxialTilt =
@@ -274,19 +304,7 @@ export const Planet = ({
     /* ========================================================
        🌌 SHARED ASTRONOMICAL TIME
 
-       SolarSystem3D owns the simulation clock.
-
-       Planet only reads it.
-
-       Shared Simulation Clock
-                ↓
-         simulationTimeRef
-                ↓
-            Planet.tsx
-                ↓
-          astronomical Date
-                ↓
-        orbital calculation
+       SolarSystem3D owns the clock.
        ======================================================== */
 
     const simulationDate =
@@ -296,12 +314,9 @@ export const Planet = ({
 
     /* ========================================================
        🪐 REAL ASTRONOMICAL PLANET POSITION
-       ======================================================== */
 
-    const orbitalElements =
-      ORBITAL_ELEMENTS[
-        planet.name
-      ];
+       Existing behavior preserved.
+       ======================================================== */
 
     if (orbitalElements) {
       const astronomicalPosition =
@@ -311,36 +326,19 @@ export const Planet = ({
         );
 
       /* ======================================================
-         📐 ASTRONOMICAL → VISUAL SCALE
-
-         Real orbital distance is preserved proportionally
-         while the existing visual scene composition remains.
-         ====================================================== */
-
-      const astronomicalVisualScale =
-        planet.distance /
-        orbitalElements.semiMajorAxisAU;
-
-      /* ======================================================
          🌌 COORDINATE SYSTEM CONVERSION
 
          Astronomy:
-
          X = ecliptic X
          Y = ecliptic Y
          Z = ecliptic normal
 
          Three.js:
-
          X = horizontal
          Y = vertical
          Z = depth
 
-         Therefore:
-
-         Three X ← astronomical X
-         Three Y ← astronomical Z
-         Three Z ← -astronomical Y
+         Existing coordinate conversion preserved.
          ====================================================== */
 
       group.position.x =
@@ -359,12 +357,9 @@ export const Planet = ({
     /* ========================================================
        🌀 ABSOLUTE ASTRONOMICAL ROTATION
 
-       The rotation is derived directly from the simulated
-       astronomical date.
+       Existing behavior preserved.
 
        W = W0 + Wdot × d
-
-       No frame-by-frame accumulation is used.
        ======================================================== */
 
     const rotationGroup =
@@ -382,7 +377,12 @@ export const Planet = ({
     }
 
     /* ========================================================
-       🧭 REAL AXIAL TILT
+       🧭 AXIAL TILT
+
+       Existing visual behavior preserved.
+
+       The value was calculated once above because
+       axial tilt does not change during runtime.
        ======================================================== */
 
     const axialTiltGroup =
@@ -390,20 +390,14 @@ export const Planet = ({
 
     if (axialTiltGroup) {
       axialTiltGroup.rotation.z =
-        getPlanetAxialTiltRadians(
-          planet,
-        );
+        initialAxialTilt;
     }
   });
 
   /* ============================================================
      🎯 REGISTER PLANET REFERENCE
 
-     useLayoutEffect is used so the reference is registered
-     as early as possible in the render lifecycle.
-
-     CameraController / CinematicController can therefore
-     access the planet without waiting for a later paint.
+     Existing behavior preserved.
      ============================================================ */
 
   useLayoutEffect(() => {
@@ -433,16 +427,9 @@ export const Planet = ({
   /* ============================================================
      🌑 SHADOW CONFIGURATION
 
-     This effect intentionally runs only when the planet's
-     visual structure changes.
+     Existing shadow logic preserved.
 
-     Previously this effect had NO dependency array,
-     meaning it could traverse the complete planet hierarchy
-     after every render.
-
-     That is unnecessary work.
-
-     Transparent atmosphere/cloud layers do not cast shadows.
+     This runs only when the planet identity changes.
      ============================================================ */
 
   useEffect(() => {
@@ -489,6 +476,8 @@ export const Planet = ({
 
   /* ============================================================
      🖱️ PLANET CLICK
+
+     Existing click data preserved.
      ============================================================ */
 
   const handleClick = () => {
@@ -539,10 +528,7 @@ export const Planet = ({
   /* ============================================================
      🎨 RENDER
 
-     The position, rotation and tilt are initialized directly
-     on the groups.
-
-     This is important for smooth first-frame rendering.
+     No visual component has been removed.
      ============================================================ */
 
   return (
@@ -557,10 +543,7 @@ export const Planet = ({
       {/* ======================================================
           🌍 VISUAL PLANET GROUP
 
-          Controls physical visual size.
-
-          CinematicController can independently scale
-          the outer group.
+          Existing visual scaling preserved.
       ====================================================== */}
 
       <group
@@ -573,8 +556,6 @@ export const Planet = ({
       >
         {/* ====================================================
             🧭 AXIAL TILT GROUP
-
-            Initialized immediately with the real axial tilt.
         ==================================================== */}
 
         <group
@@ -587,9 +568,6 @@ export const Planet = ({
         >
           {/* ==================================================
               🌀 PLANET ROTATION GROUP
-
-              Initialized immediately with the astronomical
-              rotation phase.
           ================================================== */}
 
           <group
@@ -621,72 +599,56 @@ export const Planet = ({
               >
                 <Earth />
               </group>
-
             ) : planet.name ===
               "Mars" ? (
-
               <group
                 onClick={handleClick}
               >
                 <Mars />
               </group>
-
             ) : planet.name ===
               "Mercury" ? (
-
               <group
                 onClick={handleClick}
               >
                 <Mercury />
               </group>
-
             ) : planet.name ===
               "Venus" ? (
-
               <group
                 onClick={handleClick}
               >
                 <Venus />
               </group>
-
             ) : planet.name ===
               "Jupiter" ? (
-
               <group
                 onClick={handleClick}
               >
                 <Jupiter />
               </group>
-
             ) : planet.name ===
               "Saturn" ? (
-
               <group
                 onClick={handleClick}
               >
                 <Saturn />
               </group>
-
             ) : planet.name ===
               "Uranus" ? (
-
               <group
                 onClick={handleClick}
               >
                 <Uranus />
               </group>
-
             ) : planet.name ===
               "Neptune" ? (
-
               <group
                 onClick={handleClick}
               >
                 <Neptune />
               </group>
-
             ) : (
-
               <Sphere
                 onClick={handleClick}
                 args={[
@@ -699,7 +661,8 @@ export const Planet = ({
               >
                 <meshBasicMaterial
                   color={
-                    planet.plasmaColors?.a ||
+                    planet.plasmaColors
+                      ?.a ||
                     "#ffffff"
                   }
                   transparent
@@ -716,14 +679,7 @@ export const Planet = ({
         {/* ====================================================
             🌙 MOON SYSTEM
 
-            Moon remains outside the axial rotation hierarchy.
-
-            Therefore:
-
-            Planet rotation
-                  ❌
-            does not directly rotate
-            the Moon orbital system.
+            Existing behavior preserved.
         ==================================================== */}
 
         <group
