@@ -59,6 +59,35 @@ export const Moon = ({
   const ref = useRef<THREE.Mesh>(null);
 
   // ==========================================================
+  // 🌍 REUSABLE WORLD POSITION
+  //
+  // IMPORTANT PERFORMANCE OPTIMIZATION:
+  //
+  // This vector is reused every frame instead of creating:
+  //
+  // new THREE.Vector3()
+  //
+  // during every animation frame.
+  // ==========================================================
+
+  const worldPositionRef = useRef(
+    new THREE.Vector3(),
+  );
+
+  // ==========================================================
+  // 🌑 CACHED HOST PLANET
+  //
+  // The Moon's parent hierarchy does not change during normal
+  // rendering, so there is no reason to search it repeatedly.
+  // ==========================================================
+
+  const hostPlanetRef =
+    useRef<THREE.Object3D | null>(null);
+
+  const hostPlanetResolvedRef =
+    useRef(false);
+
+  // ==========================================================
   // 🌑 PREMIUM PROCEDURAL LUNAR MATERIAL
   // ==========================================================
 
@@ -347,9 +376,6 @@ export const Moon = ({
 
         // ======================================================
         // CRATER FIELD
-        //
-        // Creates irregular crater-like depressions from
-        // layered procedural noise.
         // ======================================================
 
         float craterField(vec3 p) {
@@ -416,11 +442,9 @@ export const Moon = ({
           float crater =
             craterField(p);
 
-          // Large-scale lunar terrain.
           float height =
             terrain * 0.060;
 
-          // Irregular crater relief.
           height +=
             (
               crater -
@@ -428,7 +452,6 @@ export const Moon = ({
             ) *
             0.075;
 
-          // Smaller surface roughness.
           height +=
             (
               roughness -
@@ -639,13 +662,11 @@ export const Moon = ({
               )
             );
 
-          // Crater floors.
           surface *=
             1.0 -
             craterDark *
             0.22;
 
-          // Raised crater rims.
           surface +=
             vec3(
               0.035,
@@ -738,7 +759,6 @@ export const Moon = ({
           // ⛰️ PROCEDURAL BUMP NORMAL
           // ====================================================
 
-          // Build an approximate tangent basis.
           vec3 reference =
             abs(baseNormal.y) < 0.92
               ? vec3(0.0, 1.0, 0.0)
@@ -805,7 +825,6 @@ export const Moon = ({
               2.8
             );
 
-          // Blend bump strength.
           vec3 finalNormal =
             normalize(
               mix(
@@ -891,7 +910,6 @@ export const Moon = ({
           // ☀️ SOLAR RESPONSE
           // ====================================================
 
-          // Natural lunar surfaces are not highly reflective.
           float diffuseStrength =
             0.46 +
             day *
@@ -955,8 +973,6 @@ export const Moon = ({
               4.5
             );
 
-          // Very subtle lunar atmospheric-looking
-          // edge illumination — not a glow.
           surface +=
             vec3(
               0.018,
@@ -995,6 +1011,8 @@ export const Moon = ({
 
   // ============================================================
   // 🌑 SHADOW CALCULATION VECTORS
+  //
+  // ALL vectors are allocated ONCE and reused every frame.
   // ============================================================
 
   const shadowVectors = useRef({
@@ -1004,15 +1022,27 @@ export const Moon = ({
     sunToMoon: new THREE.Vector3(),
     axisPoint: new THREE.Vector3(),
     planetToMoon: new THREE.Vector3(),
+    worldScale: new THREE.Vector3(),
   });
 
   const shadowState = useRef(0);
 
   // ============================================================
   // 🌑 FIND HOST PLANET
+  //
+  // This is now cached.
+  //
+  // Previously this parent traversal happened repeatedly
+  // inside scene.traverse().
   // ============================================================
 
-  const findHostPlanet = () => {
+  const getHostPlanet = () => {
+    if (
+      hostPlanetResolvedRef.current
+    ) {
+      return hostPlanetRef.current;
+    }
+
     let parent =
       ref.current?.parent ?? null;
 
@@ -1020,14 +1050,20 @@ export const Moon = ({
       if (
         parent.userData?.planetName
       ) {
-        return parent;
+        hostPlanetRef.current =
+          parent;
+
+        break;
       }
 
       parent =
         parent.parent;
     }
 
-    return null;
+    hostPlanetResolvedRef.current =
+      true;
+
+    return hostPlanetRef.current;
   };
 
   // ============================================================
@@ -1054,6 +1090,7 @@ export const Moon = ({
       sunToPlanet,
       sunToMoon,
       axisPoint,
+      worldScale,
     } = shadowVectors.current;
 
     moon.copy(
@@ -1082,6 +1119,10 @@ export const Moon = ({
       sunToMoon.normalize();
 
     let strongestShadow = 0;
+
+    // Resolve host planet once.
+    const hostPlanet =
+      getHostPlanet();
 
     // ==========================================================
     // 🌍 CHECK ALL PLANETS
@@ -1139,9 +1180,6 @@ export const Moon = ({
       // ========================================================
       // 🌍 WORLD SCALE / RADIUS
       // ========================================================
-
-      const worldScale =
-        new THREE.Vector3();
 
       object.getWorldScale(
         worldScale
@@ -1258,9 +1296,6 @@ export const Moon = ({
       // 🌑 HOST PLANET BOOST
       // ========================================================
 
-      const hostPlanet =
-        findHostPlanet();
-
       if (
         hostPlanet === object
       ) {
@@ -1290,7 +1325,9 @@ export const Moon = ({
   // ============================================================
 
   useFrame(({ clock }, delta) => {
-    if (!ref.current) {
+    const mesh = ref.current;
+
+    if (!mesh) {
       return;
     }
 
@@ -1344,7 +1381,7 @@ export const Moon = ({
       Math.sin(inclination) *
       orbitDistance;
 
-    ref.current.position.set(
+    mesh.position.set(
       x,
       y,
       z
@@ -1354,19 +1391,18 @@ export const Moon = ({
     // 🔄 ROTATION
     // ==========================================================
 
-    ref.current.rotation.y +=
+    mesh.rotation.y +=
       delta *
       0.08;
 
     // ==========================================================
     // 🌍 WORLD POSITION
+    //
+    // Reuses the same Vector3 every frame.
     // ==========================================================
 
-    const worldPosition =
-      new THREE.Vector3();
-
-    ref.current.getWorldPosition(
-      worldPosition
+    mesh.getWorldPosition(
+      worldPositionRef.current
     );
 
     // ==========================================================
@@ -1375,7 +1411,7 @@ export const Moon = ({
 
     const targetShadow =
       calculatePlanetaryShadow(
-        worldPosition
+        worldPositionRef.current
       );
 
     shadowState.current =

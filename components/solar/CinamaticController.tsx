@@ -30,75 +30,15 @@ const VISIBILITY_THRESHOLD = 0.01;
    🪐 PLANET SETTINGS
    ============================================================ */
 
-/*
- * IMPORTANT:
- *
- * These values match the physical visual scales
- * used inside Planet.tsx.
- *
- * Mercury = 0.40
- * Venus   = 0.95
- * Earth   = 1.00
- * Mars    = 0.53
- * Jupiter = 2.80
- * Saturn  = 2.45
- * Uranus  = 1.65
- * Neptune = 1.60
- */
-
-/*
- * This is the desired apparent radius of the selected
- * planet during close-up.
- *
- * Because every planet has a different physical scale,
- * the outer cinematic group compensates for that scale.
- *
- * Example:
- *
- * Mercury:
- *   1.35 / 0.40 = 3.375
- *
- * Earth:
- *   1.35 / 1.00 = 1.35
- *
- * Jupiter:
- *   1.35 / 2.80 = 0.482
- *
- * So the selected planet gets approximately the same
- * cinematic visual size regardless of its base scale.
- */
-/*
- * All non-selected planets are slightly reduced during
- * a full planetary close-up.
- *
- * This guarantees that the selected planet visually dominates
- * even when another planet happens to be physically nearby.
- */
 const GLOBAL_CLOSEUP_SHRINK = 0.28;
 
-/*
- * Minimum scale for very distant planets.
- */
 const MIN_PLANET_SCALE = 0.035;
 
-/*
- * Minimum opacity for very distant planets.
- */
 const MIN_PLANET_OPACITY = 0.04;
 
-/*
- * Maximum relative distance at which a planet participates
- * in the cinematic distance effect.
- */
-/*
- * Distance where another planet starts shrinking/fading.
- */
 const PLANET_FADE_START_DISTANCE = 18;
 const PLANET_FADE_END_DISTANCE = 32;
 
-/*
- * Smooth scale/opacity transition.
- */
 const TRANSITION_SPEED = 0.12;
 
 /* ============================================================
@@ -126,6 +66,28 @@ const SUN_FINAL_HIDE_DISTANCE = 16;
 const ENVIRONMENT_CINEMATIC_OPACITY = 0;
 
 /* ============================================================
+   ⚡ PERFORMANCE SETTINGS
+   ============================================================ */
+
+const SCALE_EPSILON = 0.0001;
+const OPACITY_EPSILON = 0.001;
+
+/*
+ * Material traversal is expensive when performed every frame.
+ *
+ * We cache the materials belonging to each group and reuse them.
+ */
+type CachedMaterial = {
+  material: THREE.Material;
+  originalOpacity: number;
+};
+
+const materialCache = new WeakMap<
+  THREE.Object3D,
+  CachedMaterial[]
+>();
+
+/* ============================================================
    🎞️ SMOOTHSTEP
    ============================================================ */
 
@@ -135,8 +97,7 @@ function smoothstep(
   x: number,
 ) {
   const t = THREE.MathUtils.clamp(
-    (x - edge0) /
-      (edge1 - edge0),
+    (x - edge0) / (edge1 - edge0),
     0,
     1,
   );
@@ -145,26 +106,69 @@ function smoothstep(
 }
 
 /* ============================================================
-   🎨 ORIGINAL OPACITY
+   🎨 GET GROUP MATERIALS
    ============================================================ */
 
-function getOriginalOpacity(
-  material: THREE.Material,
-) {
-  const key =
-    "__cinematicOriginalOpacity";
+/*
+ * This replaces repeated group.traverse() calls during
+ * every animation frame.
+ *
+ * Materials are collected once and then reused.
+ */
+function getCachedMaterials(
+  group: THREE.Object3D,
+): CachedMaterial[] {
+  const cached = materialCache.get(group);
 
-  if (
-    material.userData[key] ===
-    undefined
-  ) {
-    material.userData[key] =
-      material.opacity;
+  if (cached) {
+    return cached;
   }
 
-  return material.userData[
-    key
-  ] as number;
+  const materials: CachedMaterial[] = [];
+
+  group.traverse((object) => {
+    const mesh = object as THREE.Mesh;
+
+    if (!mesh.material) {
+      return;
+    }
+
+    const meshMaterials = Array.isArray(mesh.material)
+      ? mesh.material
+      : [mesh.material];
+
+    meshMaterials.forEach((material) => {
+      /*
+       * The same material can theoretically be shared by
+       * multiple meshes. Avoid adding duplicates.
+       */
+      const alreadyCached = materials.some(
+        (entry) => entry.material === material,
+      );
+
+      if (alreadyCached) {
+        return;
+      }
+
+      const originalOpacity =
+        material.userData.__cinematicOriginalOpacity;
+
+      if (originalOpacity === undefined) {
+        material.userData.__cinematicOriginalOpacity =
+          material.opacity;
+      }
+
+      materials.push({
+        material,
+        originalOpacity:
+          material.userData.__cinematicOriginalOpacity,
+      });
+    });
+  });
+
+  materialCache.set(group, materials);
+
+  return materials;
 }
 
 /* ============================================================
@@ -175,52 +179,42 @@ function setGroupOpacity(
   group: THREE.Object3D,
   opacity: number,
 ) {
-  group.traverse((object) => {
-    const mesh =
-      object as THREE.Mesh;
+  const materials = getCachedMaterials(group);
 
-    if (!mesh.material) {
-      return;
-    }
+  const clampedOpacity =
+    THREE.MathUtils.clamp(opacity, 0, 1);
 
-    const materials =
-      Array.isArray(mesh.material)
-        ? mesh.material
-        : [mesh.material];
+  materials.forEach(
+    ({ material, originalOpacity }) => {
+      const targetOpacity =
+        originalOpacity * clampedOpacity;
 
-    materials.forEach(
-      (material) => {
-        const originalOpacity =
-          getOriginalOpacity(
-            material,
-          );
+      /*
+       * Only update when the value actually changed.
+       */
+      if (
+        Math.abs(
+          material.opacity - targetOpacity,
+        ) <= OPACITY_EPSILON
+      ) {
+        return;
+      }
 
-        const targetOpacity =
-          originalOpacity *
-          THREE.MathUtils.clamp(
-            opacity,
-            0,
-            1,
-          );
+      /*
+       * transparent + needsUpdate only needs to happen
+       * when transparency is first enabled.
+       *
+       * Setting needsUpdate every frame can trigger
+       * unnecessary material processing.
+       */
+      if (!material.transparent) {
+        material.transparent = true;
+        material.needsUpdate = true;
+      }
 
-        if (
-          Math.abs(
-            material.opacity -
-              targetOpacity,
-          ) > 0.001
-        ) {
-          material.transparent =
-            true;
-
-          material.opacity =
-            targetOpacity;
-
-          material.needsUpdate =
-            true;
-        }
-      },
-    );
-  });
+      material.opacity = targetOpacity;
+    },
+  );
 }
 
 /* ============================================================
@@ -230,7 +224,21 @@ function setGroupOpacity(
 function restoreGroupOpacity(
   group: THREE.Object3D,
 ) {
-  setGroupOpacity(group, 1);
+  const materials = getCachedMaterials(group);
+
+  materials.forEach(
+    ({ material, originalOpacity }) => {
+      if (
+        Math.abs(
+          material.opacity - originalOpacity,
+        ) <= OPACITY_EPSILON
+      ) {
+        return;
+      }
+
+      material.opacity = originalOpacity;
+    },
+  );
 }
 
 /* ============================================================
@@ -240,11 +248,12 @@ function restoreGroupOpacity(
 function getPlanetFadeFactor(
   distance: number,
 ) {
-  return 1 - smoothstep(
-    PLANET_FADE_START_DISTANCE,
-    PLANET_FADE_END_DISTANCE,
-    distance,
-  );
+  return 1 -
+    smoothstep(
+      PLANET_FADE_START_DISTANCE,
+      PLANET_FADE_END_DISTANCE,
+      distance,
+    );
 }
 
 /* ============================================================
@@ -255,48 +264,27 @@ function smoothScaleTo(
   group: THREE.Object3D,
   targetScale: number,
 ) {
-  const currentScale =
-    group.scale.x;
+  const currentScale = group.scale.x;
 
-  const nextScale =
-    THREE.MathUtils.lerp(
-      currentScale,
-      targetScale,
-      TRANSITION_SPEED,
-    );
-
-  group.scale.setScalar(
-    nextScale,
+  const nextScale = THREE.MathUtils.lerp(
+    currentScale,
+    targetScale,
+    TRANSITION_SPEED,
   );
+
+  /*
+   * Avoid unnecessary Three.js scale updates when the
+   * difference becomes extremely small.
+   */
+  if (
+    Math.abs(nextScale - currentScale) <=
+    SCALE_EPSILON
+  ) {
+    return;
+  }
+
+  group.scale.setScalar(nextScale);
 }
-
-/* ============================================================
-   🪐 SELECTED PLANET CINEMATIC SCALE
-   ============================================================ */
-
-/*
- * This is the main fix.
- *
- * Planet.tsx:
- *
- * Mercury = 0.40
- * Venus   = 0.95
- * Earth   = 1.00
- *
- * We compensate the outer cinematic group:
- *
- * Mercury:
- * 1.35 / 0.40 = 3.375
- *
- * Venus:
- * 1.35 / 0.95 ≈ 1.42
- *
- * Earth:
- * 1.35 / 1.00 = 1.35
- *
- * Therefore the selected planet becomes
- * the dominant object during close-up.
- */
 
 /* ============================================================
    🪐 NON-SELECTED PLANET SCALE
@@ -307,13 +295,8 @@ function getNonSelectedPlanetScale(
   cinematicProgress: number,
 ) {
   const distanceFade =
-    getPlanetFadeFactor(
-      distance,
-    );
+    getPlanetFadeFactor(distance);
 
-  /*
-   * Distance-based shrinking.
-   */
   const distanceScale =
     THREE.MathUtils.lerp(
       1,
@@ -321,16 +304,6 @@ function getNonSelectedPlanetScale(
       distanceFade,
     );
 
-  /*
-   * Global close-up shrinking.
-   *
-   * At full close-up:
-   *
-   * 1 → approximately 0.55
-   *
-   * This ensures nearby planets are still
-   * smaller than the selected planet.
-   */
   const globalScale =
     THREE.MathUtils.lerp(
       1,
@@ -338,10 +311,6 @@ function getNonSelectedPlanetScale(
       cinematicProgress,
     );
 
-  /*
-   * Distance effect becomes stronger
-   * during cinematic mode.
-   */
   return cinematicProgress > 0
     ? Math.min(
         globalScale,
@@ -359,9 +328,7 @@ function getNonSelectedPlanetOpacity(
   cinematicProgress: number,
 ) {
   const distanceFade =
-    getPlanetFadeFactor(
-      distance,
-    );
+    getPlanetFadeFactor(distance);
 
   const distanceOpacity =
     THREE.MathUtils.lerp(
@@ -370,11 +337,6 @@ function getNonSelectedPlanetOpacity(
       distanceFade,
     );
 
-  /*
-   * Nearby planets remain visible,
-   * but become less prominent during
-   * a full close-up.
-   */
   const globalOpacity =
     THREE.MathUtils.lerp(
       1,
@@ -399,39 +361,93 @@ export function CinematicController({
   planetRefs,
   environmentRef,
 }: CinematicControllerProps) {
-  const { camera } =
-    useThree();
+  const { camera } = useThree();
 
   /* ==========================================================
      🎯 REUSABLE POSITIONS
      ========================================================== */
 
-  const selectedPosition =
-    useRef(
-      new THREE.Vector3(),
-    );
+  const selectedPosition = useRef(
+    new THREE.Vector3(),
+  );
 
-  const objectPosition =
-    useRef(
-      new THREE.Vector3(),
-    );
+  const objectPosition = useRef(
+    new THREE.Vector3(),
+  );
+
+  /* ==========================================================
+     ⚡ CACHED PLANET REFERENCES
+     ========================================================== */
+
+  const planetEntriesRef = useRef<
+    Array<
+      [
+        string,
+        React.RefObject<THREE.Group | null>,
+      ]
+    >
+  >([]);
+
+  const planetEntriesInitializedRef =
+    useRef(false);
+
+  /*
+   * Build the entries only when needed instead of calling
+   * Object.entries() on every frame.
+   */
+  const getPlanetEntries = () => {
+    const refs = planetRefs.current;
+
+    /*
+     * Initial scene mounting.
+     */
+    if (!planetEntriesInitializedRef.current) {
+      const entries = Object.entries(refs);
+
+      if (entries.length > 0) {
+        planetEntriesRef.current =
+          entries;
+
+        planetEntriesInitializedRef.current =
+          true;
+      }
+
+      return planetEntriesRef.current;
+    }
+
+    /*
+     * Extremely cheap safety check for dynamically added
+     * planet references.
+     *
+     * Normally this will never rebuild.
+     */
+    if (
+      planetEntriesRef.current.length !==
+      Object.keys(refs).length
+    ) {
+      planetEntriesRef.current =
+        Object.entries(refs);
+    }
+
+    return planetEntriesRef.current;
+  };
 
   /* ==========================================================
      🎬 FRAME LOOP
      ========================================================== */
 
   useFrame(() => {
+    const entries =
+      getPlanetEntries();
+
     /* ========================================================
        🏠 NO PLANET SELECTED
        ======================================================== */
 
     if (!selectedPlanet) {
-      Object.entries(
-        planetRefs.current,
-      ).forEach(
+      entries.forEach(
         ([planetName, ref]) => {
-          const group =
-            ref.current;
+          const group = ref.current;
 
           if (!group) {
             return;
@@ -446,9 +462,7 @@ export function CinematicController({
               : 1,
           );
 
-          restoreGroupOpacity(
-            group,
-          );
+          restoreGroupOpacity(group);
         },
       );
 
@@ -456,8 +470,7 @@ export function CinematicController({
         environmentRef.current;
 
       if (environment) {
-        environment.visible =
-          true;
+        environment.visible = true;
 
         restoreGroupOpacity(
           environment,
@@ -509,37 +522,33 @@ export function CinematicController({
          🪐 OTHER PLANETS
          ====================================================== */
 
-      Object.entries(
-        planetRefs.current,
-      ).forEach(
+      entries.forEach(
         ([planetName, ref]) => {
-          const group =
-            ref.current;
+          const group = ref.current;
 
           if (!group) {
             return;
           }
 
-          if (
-            planetName === "Sun"
-          ) {
+          /*
+           * Sun is handled separately below.
+           */
+          if (planetName === "Sun") {
             return;
           }
 
+          /*
+           * Selected object protection.
+           */
           if (
             planetName ===
             selectedPlanet
           ) {
             group.visible = true;
 
-            smoothScaleTo(
-              group,
-              1,
-            );
+            smoothScaleTo(group, 1);
 
-            restoreGroupOpacity(
-              group,
-            );
+            restoreGroupOpacity(group);
 
             return;
           }
@@ -552,16 +561,16 @@ export function CinematicController({
             selectedDistance <=
             SUN_FINAL_HIDE_DISTANCE
           ) {
-            group.visible =
-              false;
+            group.visible = false;
 
-            group.scale.setScalar(
-              1,
-            );
+            if (
+              Math.abs(group.scale.x - 1) >
+              SCALE_EPSILON
+            ) {
+              group.scale.setScalar(1);
+            }
 
-            restoreGroupOpacity(
-              group,
-            );
+            restoreGroupOpacity(group);
 
             return;
           }
@@ -588,10 +597,8 @@ export function CinematicController({
 
           const fadeFactor =
             THREE.MathUtils.clamp(
-              sunProgress *
-                0.75 +
-                normalizedDistance *
-                  0.45,
+              sunProgress * 0.75 +
+                normalizedDistance * 0.45,
               0,
               1,
             );
@@ -618,20 +625,24 @@ export function CinematicController({
               ),
             );
 
+          /* --------------------------------------------------
+             Final visibility
+             -------------------------------------------------- */
+
           if (
             opacity <=
             VISIBILITY_THRESHOLD
           ) {
-            group.visible =
-              false;
+            group.visible = false;
 
-            group.scale.setScalar(
-              1,
-            );
+            if (
+              Math.abs(group.scale.x - 1) >
+              SCALE_EPSILON
+            ) {
+              group.scale.setScalar(1);
+            }
 
-            restoreGroupOpacity(
-              group,
-            );
+            restoreGroupOpacity(group);
 
             return;
           }
@@ -676,17 +687,14 @@ export function CinematicController({
           selectedDistance <=
           SUN_FINAL_HIDE_DISTANCE + 2
         ) {
-          environment.visible =
-            false;
+          environment.visible = false;
         } else if (
           opacity <=
           VISIBILITY_THRESHOLD
         ) {
-          environment.visible =
-            false;
+          environment.visible = false;
         } else {
-          environment.visible =
-            true;
+          environment.visible = true;
 
           setGroupOpacity(
             environment,
@@ -700,13 +708,10 @@ export function CinematicController({
          ====================================================== */
 
       const sunGroup =
-        planetRefs.current[
-          "Sun"
-        ]?.current;
+        planetRefs.current["Sun"]?.current;
 
       if (sunGroup) {
-        sunGroup.visible =
-          true;
+        sunGroup.visible = true;
 
         const sunScale =
           THREE.MathUtils.lerp(
@@ -744,12 +749,9 @@ export function CinematicController({
        🪐 ALL PLANETS
        ======================================================== */
 
-    Object.entries(
-      planetRefs.current,
-    ).forEach(
+    entries.forEach(
       ([planetName, ref]) => {
-        const group =
-          ref.current;
+        const group = ref.current;
 
         if (!group) {
           return;
@@ -759,9 +761,7 @@ export function CinematicController({
            ☀️ SUN
            ==================================================== */
 
-        if (
-          planetName === "Sun"
-        ) {
+        if (planetName === "Sun") {
           return;
         }
 
@@ -770,27 +770,10 @@ export function CinematicController({
            ==================================================== */
 
         if (
-          planetName ===
-          selectedPlanet
+          planetName === selectedPlanet
         ) {
           group.visible = true;
 
-          /*
-           * MAIN FIX:
-           *
-           * Compensate for the physical
-           * planet scale.
-           *
-           * Mercury:
-           *   physical = 0.40
-           *   cinematic = 3.375
-           *   final ≈ 1.35
-           *
-           * Earth:
-           *   physical = 1
-           *   cinematic = 1.35
-           *   final ≈ 1.35
-           */
           const selectedScale =
             THREE.MathUtils.lerp(
               1,
@@ -853,12 +836,14 @@ export function CinematicController({
           opacity <=
           VISIBILITY_THRESHOLD
         ) {
-          group.visible =
-            false;
+          group.visible = false;
 
-          group.scale.setScalar(
-            1,
-          );
+          if (
+            Math.abs(group.scale.x - 1) >
+            SCALE_EPSILON
+          ) {
+            group.scale.setScalar(1);
+          }
 
           restoreGroupOpacity(
             group,
@@ -890,9 +875,7 @@ export function CinematicController({
        ======================================================== */
 
     const sunGroup =
-      planetRefs.current[
-        "Sun"
-      ]?.current;
+      planetRefs.current["Sun"]?.current;
 
     if (sunGroup) {
       sunGroup.visible = true;
@@ -941,11 +924,9 @@ export function CinematicController({
         opacity <=
         VISIBILITY_THRESHOLD
       ) {
-        environment.visible =
-          false;
+        environment.visible = false;
       } else {
-        environment.visible =
-          true;
+        environment.visible = true;
 
         setGroupOpacity(
           environment,

@@ -3,6 +3,7 @@
 import { Sphere } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import {
+  memo,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -41,10 +42,9 @@ import {
 /* ============================================================
    🪐 PLANET
 
-   Initial-render optimized WITHOUT removing any existing logic.
+   Initial-render + interaction optimized.
 
-   Important goals:
-
+   Important:
    • Correct astronomical position on FIRST frame
    • Correct rotation on FIRST frame
    • Correct axial tilt on FIRST frame
@@ -53,10 +53,10 @@ import {
    • Shadow system remains fully functional
    • Planet click behavior remains unchanged
    • Existing planet-specific visual components remain unchanged
-   • Only safe performance optimizations are applied
+   • No visual feature has been removed
    ============================================================ */
 
-export const Planet = ({
+const PlanetComponent = ({
   planet,
   simulationMode,
   playbackSpeed,
@@ -102,6 +102,26 @@ export const Planet = ({
     useRef<THREE.Group | null>(null);
 
   /* ==========================================================
+     ⏱️ REUSABLE SIMULATION DATE
+
+     Previously:
+       new Date(simulationTimeRef.current)
+
+     was created every frame.
+
+     The Date object is now reused and only its timestamp
+     is updated. This preserves the exact same simulation
+     time while avoiding repeated Date allocations.
+     ========================================================== */
+
+  const simulationDateRef =
+    useRef(
+      new Date(
+        simulationTimeRef.current,
+      ),
+    );
+
+  /* ==========================================================
      🎨 PHYSICAL VISUAL SCALE
 
      Static value for this planet.
@@ -133,11 +153,6 @@ export const Planet = ({
      📐 ASTRONOMICAL → VISUAL SCALE
 
      Static for the current planet.
-
-     Previously this calculation was repeated inside
-     useFrame() on every rendered frame.
-
-     It is now calculated once.
      ========================================================== */
 
   const astronomicalVisualScale =
@@ -177,7 +192,7 @@ export const Planet = ({
 
      This prevents:
 
-     origin → real position
+       origin → real position
 
      visual jumping.
      ========================================================== */
@@ -305,12 +320,17 @@ export const Planet = ({
        🌌 SHARED ASTRONOMICAL TIME
 
        SolarSystem3D owns the clock.
+
+       The Date instance is reused to avoid allocating
+       a new Date object on every frame.
        ======================================================== */
 
     const simulationDate =
-      new Date(
-        simulationTimeRef.current,
-      );
+      simulationDateRef.current;
+
+    simulationDate.setTime(
+      simulationTimeRef.current,
+    );
 
     /* ========================================================
        🪐 REAL ASTRONOMICAL PLANET POSITION
@@ -707,3 +727,120 @@ export const Planet = ({
     </group>
   );
 };
+
+/* ============================================================
+   ⚡ MEMOIZED PLANET
+
+   Important optimization:
+
+   selectedPlanet itself can change whenever the user
+   clicks another planet.
+
+   However, every planet does NOT need to rerender just
+   because the selected planet name changed.
+
+   We compare whether THIS planet's selected state changed.
+
+   Example:
+
+   Earth selected → Jupiter selected
+
+   Only:
+     Earth  : selected → unselected
+     Jupiter: unselected → selected
+
+   Other planets remain untouched by React reconciliation.
+   ============================================================ */
+
+export const Planet = memo(
+  PlanetComponent,
+  (prevProps, nextProps) => {
+    /* ========================================================
+       🪐 Planet identity / data
+       ======================================================== */
+
+    if (
+      prevProps.planet !==
+      nextProps.planet
+    ) {
+      return false;
+    }
+
+    /* ========================================================
+       🎮 Simulation controls
+
+       These are required because Moon behavior and the
+       simulation system depend on them.
+       ======================================================== */
+
+    if (
+      prevProps.simulationMode !==
+      nextProps.simulationMode
+    ) {
+      return false;
+    }
+
+    if (
+      prevProps.playbackSpeed !==
+      nextProps.playbackSpeed
+    ) {
+      return false;
+    }
+
+    /* ========================================================
+       🌌 Shared refs
+
+       If the actual refs change, the component must update.
+       ======================================================== */
+
+    if (
+      prevProps.simulationTimeRef !==
+      nextProps.simulationTimeRef
+    ) {
+      return false;
+    }
+
+    if (
+      prevProps.simulationDeltaDaysRef !==
+      nextProps.simulationDeltaDaysRef
+    ) {
+      return false;
+    }
+
+    if (
+      prevProps.setRef !==
+      nextProps.setRef
+    ) {
+      return false;
+    }
+
+    if (
+      prevProps.onClick !==
+      nextProps.onClick
+    ) {
+      return false;
+    }
+
+    /* ========================================================
+       🌙 Selected state
+
+       Compare ONLY whether this specific planet is selected.
+
+       This prevents all planets from rerendering when the
+       selected planet changes elsewhere.
+       ======================================================== */
+
+    const wasSelected =
+      prevProps.selectedPlanet ===
+      prevProps.planet.name;
+
+    const isSelected =
+      nextProps.selectedPlanet ===
+      nextProps.planet.name;
+
+    return (
+      wasSelected ===
+      isSelected
+    );
+  },
+);
