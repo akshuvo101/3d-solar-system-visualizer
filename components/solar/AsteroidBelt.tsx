@@ -2,8 +2,8 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
-const ASTEROID_COUNT = 650;
-const DUST_COUNT = 1000;
+const ASTEROID_COUNT = 190;
+const DUST_COUNT = 240;
 const FEATURED_COUNT = 10;
 
 type Asteroid = {

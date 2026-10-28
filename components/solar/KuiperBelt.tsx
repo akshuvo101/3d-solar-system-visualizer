@@ -2,9 +2,9 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 
-const KUIPER_COUNT = 850;
+const KUIPER_COUNT = 230;
 const FEATURED_COUNT = 12;
-const DUST_COUNT = 1000;
+const DUST_COUNT = 240;
 
 type KuiperObject = {
   angle: number;

@@ -56,9 +56,9 @@ const SUN_MIN_DISTANCE = 12;
 // 🎬 CAMERA TRANSITION
 // ============================================================
 
-const TRANSITION_SPEED = 7.5;
+const TRANSITION_SPEED = 8.5;
 
-const MAX_TRANSITION_TIME = 1.15;
+const MAX_TRANSITION_TIME = 1.0;
 
 // ============================================================
 // 🎥 DEFAULT CAMERA DIRECTION

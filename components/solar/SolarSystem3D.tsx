@@ -4,7 +4,6 @@ import { planetData } from "@/lib/planetData";
 import {
   Canvas,
   useFrame,
-  useThree,
 } from "@react-three/fiber";
 import { Sun } from "./Sun";
 import OrbitPath from "./OrbitPath";
@@ -71,49 +70,8 @@ const DAY_IN_MILLISECONDS = 86_400_000;
    Orbit Paths
    ============================================================ */
 
-const ENVIRONMENT_START_DELAY = 180;
-const ORBIT_START_DELAY = 280;
-
-/* ============================================================
-   💡 SHADOW STARTUP TIMING
-
-   Shadow rendering is one of the heavier GPU operations
-   during the first scene initialization.
-
-   The actual shadow configuration is NOT changed.
-
-   We only wait a very short moment before enabling the
-   existing 2048 × 2048 shadow map.
-
-   Final visual quality remains the same.
-   ============================================================ */
-
-const SHADOW_START_DELAY = 120;
-
-/* ============================================================
-   🔥 SHADER WARM-UP TIMING
-
-   The scene is already visible before this begins.
-
-   We intentionally wait until the main scene has had time
-   to render before asking Three.js to prepare existing
-   materials.
-
-   This prevents the warm-up itself from competing with
-   the very first visible frame.
-
-   The warm-up does NOT change:
-
-   • materials
-   • shaders
-   • geometry
-   • lighting
-   • DPR
-   • shadows
-   • visual quality
-   ============================================================ */
-
-const SHADER_WARMUP_DELAY = 650;
+const ENVIRONMENT_START_DELAY = 4200;
+const ORBIT_START_DELAY = 2200;
 
 type Props = {
   simulationMode: SimulationMode;
@@ -223,97 +181,13 @@ function SimulationClock({
 }
 
 /* ============================================================
-   🔥 SCENE SHADER WARM-UP
+   ⚡ SELECTION PERFORMANCE
 
-   Purpose:
-
-   Prevent the FIRST planet click from being the moment
-   when Three.js has to compile expensive procedural
-   materials.
-
-   The scene remains visually unchanged.
-
-   This is a preparation step only.
+   Do not compile the entire scene when a planet is selected.
+   Every planet has custom shader materials; recompiling the
+   full scene here can block the browser during camera changes.
+   Three.js will compile only the materials it actually needs.
    ============================================================ */
-
-function SceneShaderWarmup() {
-  const { gl, scene, camera } =
-    useThree();
-
-  const elapsedRef = useRef(0);
-  const startedRef = useRef(false);
-  const finishedRef = useRef(false);
-
-  useFrame((_, delta) => {
-    if (finishedRef.current) {
-      return;
-    }
-
-    elapsedRef.current += delta;
-
-    if (
-      !startedRef.current &&
-      elapsedRef.current >=
-        SHADER_WARMUP_DELAY / 1000
-    ) {
-      startedRef.current = true;
-
-      /*
-       * compileAsync is preferred when available because
-       * WebGLRenderer can yield between compilation steps.
-       *
-       * This allows the initial scene to become visible
-       * before the preparation begins.
-       */
-
-      const renderer =
-        gl as THREE.WebGLRenderer & {
-          compileAsync?: (
-            scene: THREE.Scene,
-            camera: THREE.Camera,
-          ) => Promise<void>;
-        };
-
-      if (
-        typeof renderer.compileAsync ===
-        "function"
-      ) {
-        renderer
-          .compileAsync(scene, camera)
-          .catch(() => {
-            /*
-             * Shader warm-up is an optimization only.
-             *
-             * If a browser/GPU does not support the
-             * asynchronous compilation path, the normal
-             * Three.js rendering pipeline continues.
-             */
-          })
-          .finally(() => {
-            finishedRef.current = true;
-          });
-      } else {
-        /*
-         * Compatibility fallback.
-
-         compile() prepares the existing scene using the
-         normal renderer path.
-
-         No visual configuration is changed.
-         */
-
-        renderer.compile(
-          scene,
-          camera,
-        );
-
-        finishedRef.current = true;
-      }
-    }
-  });
-
-  return null;
-}
 
 /* ============================================================
    🎬 PROGRESSIVE SCENE STARTUP
@@ -332,11 +206,9 @@ function SceneShaderWarmup() {
 function SceneStartup({
   onEnvironmentReady,
   onOrbitReady,
-  onShadowsReady,
 }: {
   onEnvironmentReady: () => void;
   onOrbitReady: () => void;
-  onShadowsReady: () => void;
 }) {
   const elapsedRef = useRef(0);
 
@@ -346,25 +218,8 @@ function SceneStartup({
   const orbitReadyRef =
     useRef(false);
 
-  const shadowsReadyRef =
-    useRef(false);
-
   useFrame((_, delta) => {
     elapsedRef.current += delta;
-
-    /* ========================================================
-       💡 SHADOWS
-       ======================================================== */
-
-    if (
-      !shadowsReadyRef.current &&
-      elapsedRef.current >=
-        SHADOW_START_DELAY / 1000
-    ) {
-      shadowsReadyRef.current = true;
-
-      onShadowsReady();
-    }
 
     /* ========================================================
        🌌 HEAVY ENVIRONMENT
@@ -483,11 +338,6 @@ export default function SolarSystem3D({
     setOrbitReady,
   ] = useState(false);
 
-  const [
-    shadowsReady,
-    setShadowsReady,
-  ] = useState(false);
-
   /* ============================================================
      🎬 STARTUP CALLBACKS
      ============================================================ */
@@ -500,11 +350,6 @@ export default function SolarSystem3D({
   const handleOrbitReady =
     useCallback(() => {
       setOrbitReady(true);
-    }, []);
-
-  const handleShadowsReady =
-    useCallback(() => {
-      setShadowsReady(true);
     }, []);
 
   /* ============================================================
@@ -621,24 +466,22 @@ export default function SolarSystem3D({
           /* ==================================================
              🚀 PERFORMANCE
 
-             Maximum DPR remains 1.5.
-
-             Visual quality preserved.
+             Use native resolution with a modest 1.25x cap for sharper planets and orbit edges
+             without the heavy cost of unrestricted high-DPI rendering.
           ================================================== */
 
-          dpr={[1, 1.5]}
+          dpr={[1, 1.25]}
 
           /*
              Shadow rendering remains enabled.
 
              Only castShadow is progressively enabled.
           */
-          shadows
+          shadows={false}
 
           gl={{
             antialias: true,
-            powerPreference:
-              "high-performance",
+            powerPreference: "high-performance",
           }}
         >
           {/* ==================================================
@@ -673,22 +516,7 @@ export default function SolarSystem3D({
             onOrbitReady={
               handleOrbitReady
             }
-            onShadowsReady={
-              handleShadowsReady
-            }
           />
-
-          {/* ==================================================
-              🔥 SHADER WARM-UP
-
-              Runs after the initial scene has already
-              had time to become visible.
-
-              This is specifically intended to reduce
-              first-interaction shader compilation spikes.
-          ================================================== */}
-
-          <SceneShaderWarmup />
 
           {/* ==================================================
               🎥 ORBIT CONTROLS
@@ -768,10 +596,7 @@ export default function SolarSystem3D({
           {orbitReady && (
             <group>
               {planetData.map(
-                (
-                  planet,
-                  index,
-                ) => (
+                (planet) => (
                   <OrbitPath
                     key={
                       planet.name
@@ -779,7 +604,6 @@ export default function SolarSystem3D({
                     distance={
                       planet.distance
                     }
-                    index={index}
                   />
                 ),
               )}
@@ -811,14 +635,12 @@ export default function SolarSystem3D({
             intensity={65}
             distance={0}
             decay={0.8}
-            castShadow={
-              shadowsReady
-            }
+            castShadow={false}
             shadow-mapSize-width={
-              2048
+              512
             }
             shadow-mapSize-height={
-              2048
+              512
             }
             shadow-bias={
               -0.0002
